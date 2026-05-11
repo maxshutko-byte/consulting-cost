@@ -739,7 +739,7 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
 /* ---------- Sub-components ---------- */
 function ResultHeader({
   lang, setLang, tr,
-}: { lang: Lang; setLang: (l: Lang) => void; tr: typeof I18N["ru"] }) {
+}: { lang: Lang; setLang: (l: Lang) => void; tr: (typeof I18N)[Lang] }) {
   return (
     <>
       <div className="flex justify-between items-center mb-5 sm:mb-7">
