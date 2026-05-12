@@ -309,13 +309,7 @@ export default function Calculator() {
       }
     };
 
-    // Auto-fetch AI on first open of analysis tab
-    useEffect(() => {
-      if (activeTab === "ai" && !aiText && !aiLoading) {
-        fetchAi();
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    // Auto-fetch handled by Tabs onValueChange below
 
     const exportPdf = () => {
       const doc = new jsPDF({ unit: "pt", format: "a4" });
