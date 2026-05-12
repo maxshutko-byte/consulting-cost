@@ -443,7 +443,14 @@ export default function Calculator() {
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              setActiveTab(v);
+              if (v === "ai" && !aiText && !aiLoading) fetchAi();
+            }}
+            className="w-full"
+          >
             <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent h-auto p-0 overflow-x-auto">
               {[
                 { id: "summary", label: lang === "ru" ? "Итог" : "Summary" },
