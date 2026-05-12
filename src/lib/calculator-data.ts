@@ -191,6 +191,22 @@ export const URGENCY_DATA = [
   { id:"express", ru:"Экспресс",    en:"Express",     descRu:"До 24 часов",       descEn:"Within 24 hours",   mult:1.7, tone:"destructive" as const },
 ];
 
+export type PricingModelId = "tm" | "fixed" | "value" | "retainer";
+
+export const PRICING_MODELS: {
+  id: PricingModelId;
+  ru: string; en: string;
+  descRu: string; descEn: string;
+  icon: string;
+  /** multiplier applied to final cost range */
+  mult: number;
+}[] = [
+  { id:"tm",       ru:"Time & Materials", en:"Time & Materials", descRu:"Почасовая оплата фактического времени", descEn:"Hourly billing of actual time",       icon:"⏱", mult:1.0 },
+  { id:"fixed",    ru:"Fixed Price",      en:"Fixed Price",      descRu:"Фикс с риск-коэффициентом +15%",        descEn:"Fixed with +15% risk premium",         icon:"⊞", mult:1.15 },
+  { id:"value",    ru:"Value-Based",      en:"Value-Based",      descRu:"Привязка к результату клиента (+25%)",  descEn:"Linked to client outcome (+25%)",      icon:"◆", mult:1.25 },
+  { id:"retainer", ru:"Retainer",         en:"Retainer",         descRu:"Ежемесячный абонемент (-10%)",          descEn:"Monthly retainer (-10%)",              icon:"↻", mult:0.9 },
+];
+
 export const FORMAT_DATA = [
   { id:"online",   ru:"Онлайн",            en:"Online",            icon:"⊙", mult:1.0 },
   { id:"offline",  ru:"Офлайн / выезд",    en:"Offline / On-site", icon:"⊕", mult:1.2 },
