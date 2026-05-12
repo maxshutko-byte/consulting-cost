@@ -476,6 +476,7 @@ export default function Calculator() {
               <dl className="space-y-1">
                 {[
                   [lang === "ru" ? "Тип работы" : "Work type", lang === "ru" ? R.wt.ru : R.wt.en],
+                  [tr.pricingModel, `${lang === "ru" ? R.pm.ru : R.pm.en}${R.pm.mult !== 1 ? ` (×${R.pm.mult})` : ""}`],
                   [lang === "ru" ? "Срочность" : "Urgency", `${lang === "ru" ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`],
                   [lang === "ru" ? "Формат" : "Format", lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en],
                   [lang === "ru" ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`],
