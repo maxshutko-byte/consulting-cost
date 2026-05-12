@@ -105,11 +105,17 @@ export default function Calculator() {
   const [currency, setCurrency] = useState<Currency>("EUR");
   const [customRateMin, setCustomRateMin] = useState(40);
   const [customRateMax, setCustomRateMax] = useState(95);
+  const [pricingModel, setPricingModel] = useState<PricingModelId>("tm");
 
   const [done, setDone] = useState(false);
   const [activeTab, setActiveTab] = useState("summary");
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  const [aiText, setAiText] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
+  const runAnalyze = useServerFn(analyzeEstimate);
 
   // Load history on client only (avoid SSR localStorage)
   useEffect(() => {
