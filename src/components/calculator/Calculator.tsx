@@ -633,15 +633,45 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
 
             {/* AI / Analysis */}
             <TabsContent value="ai" className="p-5 sm:p-8 mt-0">
-              <SectionTitle>{tr.aiComment}</SectionTitle>
-              <div className="bg-surface-el border border-info/30 rounded-xl p-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                {analysis}
+              <div className="flex items-center justify-between mb-4 gap-3">
+                <SectionTitle className="mb-0">{tr.aiComment}</SectionTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={fetchAi}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? "…" : tr.aiRefresh}
+                </Button>
               </div>
+              {aiLoading ? (
+                <div className="bg-surface-el border border-info/30 rounded-xl p-6 text-sm text-muted-foreground flex items-center gap-3">
+                  <span className="inline-block w-3 h-3 rounded-full bg-primary-glow animate-pulse" />
+                  {tr.aiLoading}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className={cn(
+                      "border rounded-xl p-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap",
+                      aiError ? "bg-warning/10 border-warning/40" : "bg-surface-el border-info/30",
+                    )}
+                  >
+                    {analysis}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mt-3">
+                    {aiError ? (lang === "ru" ? "Локальный анализ (AI недоступен)" : "Local analysis (AI unavailable)") : tr.aiPoweredBy}
+                  </div>
+                </>
+              )}
             </TabsContent>
           </Tabs>
 
-          <div className="px-5 sm:px-8 pb-6">
-            <Button onClick={reset} variant="outline" className="w-full mt-2">
+          <div className="px-5 sm:px-8 pb-6 space-y-2">
+            <Button onClick={exportPdf} className="w-full mt-2 shadow-glow">
+              ⬇ {tr.exportPdf}
+            </Button>
+            <Button onClick={reset} variant="outline" className="w-full">
               {tr.recalculate}
             </Button>
           </div>
