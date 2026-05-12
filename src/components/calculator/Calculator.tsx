@@ -166,6 +166,8 @@ export default function Calculator() {
       const ovPct = (opts.overhead ?? parseInt(overhead)) / 100;
       const riskPct = (opts.risk ?? parseInt(riskBuf)) / 100;
       m *= (1 + ovPct) * (1 + riskPct);
+      const pm = PRICING_MODELS.find((p) => p.id === pricingModel)!;
+      m *= pm.mult;
       const hours = Math.max(1, Math.round(baseH * m));
       const rateBase = wt.baseRate * uMult;
       const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
@@ -181,12 +183,12 @@ export default function Calculator() {
         cMin = Math.round(minLocal);
         cMax = Math.round(minLocal * 1.2);
       }
-      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym };
+      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm };
     },
     [
       wtId, wtCrit, urgency, format, volumeAns, complexAns, univAns,
       clientNew, industryExp, overhead, riskBuf, customRateMin, customRateMax,
-      currency, minThreshold, tr,
+      currency, minThreshold, tr, pricingModel,
     ],
   );
 
