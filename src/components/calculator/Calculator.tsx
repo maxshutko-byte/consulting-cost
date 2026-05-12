@@ -5,15 +5,20 @@ import {
   UNIVERSAL,
   URGENCY_DATA,
   FORMAT_DATA,
+  PRICING_MODELS,
   I18N,
   type Lang,
   type Currency,
   type Criterion,
+  type PricingModelId,
 } from "@/lib/calculator-data";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { useServerFn } from "@tanstack/react-start";
+import { analyzeEstimate } from "@/lib/ai-analysis.functions";
+import jsPDF from "jspdf";
 
 /* ---------- Animated number ---------- */
 function AnimNum({ value }: { value: number }) {
@@ -100,11 +105,17 @@ export default function Calculator() {
   const [currency, setCurrency] = useState<Currency>("EUR");
   const [customRateMin, setCustomRateMin] = useState(40);
   const [customRateMax, setCustomRateMax] = useState(95);
+  const [pricingModel, setPricingModel] = useState<PricingModelId>("tm");
 
   const [done, setDone] = useState(false);
   const [activeTab, setActiveTab] = useState("summary");
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  const [aiText, setAiText] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
+  const runAnalyze = useServerFn(analyzeEstimate);
 
   // Load history on client only (avoid SSR localStorage)
   useEffect(() => {
@@ -113,6 +124,17 @@ export default function Calculator() {
       if (h) setHistory(JSON.parse(h));
     } catch {}
   }, []);
+
+  // Risk flags (computed always; used in result view & AI request)
+  const flags = useMemo(() => {
+    const f: string[] = [];
+    if (urgency === "express") f.push(lang === "ru" ? "высокая срочность увеличивает риск ошибок и требует доступа к ЛПР 24/7" : "express urgency raises error risk and demands 24/7 stakeholder access");
+    if (industryExp === "new") f.push(lang === "ru" ? "новая отрасль — заложите время на погружение" : "new industry — budget time for domain immersion");
+    if (univAns.task_clarity === "vague") f.push(lang === "ru" ? "размытое ТЗ: рекомендуется отдельная фаза скоупинга" : "vague brief: a dedicated scoping phase is recommended");
+    if (univAns.data_clarity === "messy") f.push(lang === "ru" ? "данные хаотичны — добавьте этап подготовки" : "data is chaotic — add a data-prep stage");
+    if (parseInt(riskBuf) === 0) f.push(lang === "ru" ? "буфер не заложен — любое отклонение ударит по марже" : "no risk buffer — any deviation will hit your margin");
+    return f;
+  }, [urgency, industryExp, univAns, riskBuf, lang]);
 
   const wtCrit = wtId ? CRITERIA[wtId] : null;
 
@@ -155,6 +177,8 @@ export default function Calculator() {
       const ovPct = (opts.overhead ?? parseInt(overhead)) / 100;
       const riskPct = (opts.risk ?? parseInt(riskBuf)) / 100;
       m *= (1 + ovPct) * (1 + riskPct);
+      const pm = PRICING_MODELS.find((p) => p.id === pricingModel)!;
+      m *= pm.mult;
       const hours = Math.max(1, Math.round(baseH * m));
       const rateBase = wt.baseRate * uMult;
       const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
@@ -170,12 +194,12 @@ export default function Calculator() {
         cMin = Math.round(minLocal);
         cMax = Math.round(minLocal * 1.2);
       }
-      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym };
+      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm };
     },
     [
       wtId, wtCrit, urgency, format, volumeAns, complexAns, univAns,
       clientNew, industryExp, overhead, riskBuf, customRateMin, customRateMax,
-      currency, minThreshold, tr,
+      currency, minThreshold, tr, pricingModel,
     ],
   );
 
@@ -202,6 +226,7 @@ export default function Calculator() {
   const reset = () => {
     setStep(0); setWtId(null); setVolumeAns({}); setComplexAns({}); setUnivAns({});
     setUrgency(null); setFormat(null); setDone(false); setActiveTab("summary"); setCopied(false);
+    setAiText(""); setAiError(false); setAiLoading(false);
   };
 
   const clearHistory = () => {
@@ -233,14 +258,9 @@ export default function Calculator() {
       { label: tr.scenario3, sc: calcCore(1.0, { overhead: 0, risk: 0 }), tone: "success" },
     ];
 
-    // Local deterministic analysis (no API)
-    const buildAnalysis = (): string => {
-      const flags: string[] = [];
-      if (urgency === "express") flags.push(lang === "ru" ? "высокая срочность увеличивает риск ошибок и требует доступа к ЛПР 24/7" : "express urgency raises error risk and demands 24/7 stakeholder access");
-      if (industryExp === "new") flags.push(lang === "ru" ? "новая отрасль — заложите время на погружение" : "new industry — budget time for domain immersion");
-      if (univAns.task_clarity === "vague") flags.push(lang === "ru" ? "размытое ТЗ: рекомендуется отдельная фаза скоупинга" : "vague brief: a dedicated scoping phase is recommended");
-      if (univAns.data_clarity === "messy") flags.push(lang === "ru" ? "данные хаотичны — добавьте этап подготовки" : "data is chaotic — add a data-prep stage");
-      if (parseInt(riskBuf) === 0) flags.push(lang === "ru" ? "буфер не заложен — любое отклонение ударит по марже" : "no risk buffer — any deviation will hit your margin");
+    // (flags computed at top-level)
+
+    const buildLocalAnalysis = (): string => {
       const headline = lang === "ru"
         ? `Расчёт выглядит сбалансированным: ${R.hMin}–${R.hMax} ч при ставке ${R.rMin}–${R.rMax} €/час даёт коридор ${R.cMin.toLocaleString()}–${R.cMax.toLocaleString()} ${R.sym}.`
         : `The estimate looks balanced: ${R.hMin}–${R.hMax} h at ${R.rMin}–${R.rMax} €/hr gives a range of ${R.cMin.toLocaleString()}–${R.cMax.toLocaleString()} ${R.sym}.`;
@@ -252,7 +272,137 @@ export default function Calculator() {
         : "Before sending to the client, confirm decision-makers, acceptance format and revision expectations.";
       return `${headline}\n\n${risks}\n\n${advice}`;
     };
-    const analysis = buildAnalysis();
+
+    const fetchAi = async () => {
+      setAiLoading(true);
+      setAiError(false);
+      try {
+        const res = await runAnalyze({
+          data: {
+            lang,
+            workType: lang === "ru" ? R.wt.ru : R.wt.en,
+            urgency: lang === "ru" ? R.urgEntry.ru : R.urgEntry.en,
+            format: lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en,
+            hours: { min: R.hMin, max: R.hMax },
+            rate: { min: R.rMin, max: R.rMax },
+            cost: { min: R.cMin, max: R.cMax, sym: R.sym },
+            multiplier: R.m,
+            riskBuffer: parseInt(riskBuf),
+            overhead: parseInt(overhead),
+            industryExp,
+            clientType: clientNew,
+            pricingModel: lang === "ru" ? R.pm.ru : R.pm.en,
+            flags,
+          },
+        });
+        if (res.error) {
+          setAiError(true);
+          setAiText(res.text + "\n\n" + buildLocalAnalysis());
+        } else {
+          setAiText(res.text || buildLocalAnalysis());
+        }
+      } catch (e) {
+        console.error(e);
+        setAiError(true);
+        setAiText(buildLocalAnalysis());
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    // Auto-fetch handled by Tabs onValueChange below
+
+    const exportPdf = () => {
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 48;
+      let y = margin;
+      const isRu = lang === "ru";
+
+      const ensure = (need: number) => {
+        if (y + need > pageH - margin) { doc.addPage(); y = margin; }
+      };
+      const h1 = (t: string) => {
+        ensure(28);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(20, 30, 60);
+        doc.text(t, margin, y); y += 24;
+      };
+      const h2 = (t: string) => {
+        ensure(22);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
+        doc.text(t, margin, y); y += 16;
+      };
+      const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...color);
+        const lines = doc.splitTextToSize(t, pageW - margin * 2);
+        for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
+      };
+      const kv = (k: string, v: string) => {
+        ensure(14);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
+        doc.text(k, margin, y);
+        doc.setFont("helvetica", "bold"); doc.setTextColor(20, 30, 60);
+        doc.text(v, pageW - margin, y, { align: "right" });
+        y += 14;
+      };
+
+      h1(isRu ? "Смета консалтингового проекта" : "Consulting Project Estimate");
+      p(`${isRu ? "Дата" : "Date"}: ${new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB")}`, [120,120,130]);
+      y += 6;
+
+      // Hero
+      doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 60, "F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
+      doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 14, y + 18);
+      doc.setFontSize(20); doc.setTextColor(30, 60, 200);
+      doc.text(`${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}`, margin + 14, y + 44);
+      y += 76;
+
+      h2(isRu ? "Параметры" : "Parameters");
+      kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
+      kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
+      kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
+      kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
+      kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
+      kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
+      kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
+      kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
+      kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
+      kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
+      kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
+      y += 8;
+
+      h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
+      tr.phases.forEach((ph, i) => {
+        const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
+        const hrs = Math.round(R.hours * phasesPct[i] / 100);
+        kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
+      });
+      y += 8;
+
+      h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
+      scenarios.forEach(({ label, sc }) => {
+        if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
+      });
+      y += 8;
+
+      if (aiText) {
+        h2(isRu ? "Анализ сметы" : "Estimate analysis");
+        p(aiText);
+        y += 4;
+      }
+
+      ensure(40);
+      doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
+      doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(120,120,130);
+      const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
+      for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
+
+      doc.save(`estimate-${Date.now()}.pdf`);
+    };
+
+    const analysis = aiText || buildLocalAnalysis();
 
     return (
       <div className="w-full max-w-4xl mx-auto">
@@ -269,9 +419,13 @@ export default function Calculator() {
                 <AnimNum value={R.cMin} /> – <AnimNum value={R.cMax} />
               </span>{" "}
               <span className="text-foreground">{R.sym}</span>
+              {pricingModel === "retainer" && (
+                <span className="text-base sm:text-xl text-muted-foreground font-semibold">{tr.perMonth}</span>
+              )}
             </div>
             <div className="mt-4 text-xs sm:text-sm text-muted-foreground">
               {(lang === "ru" ? R.wt.ru : R.wt.en)} ·{" "}
+              {(lang === "ru" ? R.pm.ru : R.pm.en)} ·{" "}
               {(lang === "ru" ? R.urgEntry.ru : R.urgEntry.en)} ·{" "}
               {(lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en)}
             </div>
@@ -293,7 +447,14 @@ export default function Calculator() {
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              setActiveTab(v);
+              if (v === "ai" && !aiText && !aiLoading) fetchAi();
+            }}
+            className="w-full"
+          >
             <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent h-auto p-0 overflow-x-auto">
               {[
                 { id: "summary", label: lang === "ru" ? "Итог" : "Summary" },
@@ -319,6 +480,7 @@ export default function Calculator() {
               <dl className="space-y-1">
                 {[
                   [lang === "ru" ? "Тип работы" : "Work type", lang === "ru" ? R.wt.ru : R.wt.en],
+                  [tr.pricingModel, `${lang === "ru" ? R.pm.ru : R.pm.en}${R.pm.mult !== 1 ? ` (×${R.pm.mult})` : ""}`],
                   [lang === "ru" ? "Срочность" : "Urgency", `${lang === "ru" ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`],
                   [lang === "ru" ? "Формат" : "Format", lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en],
                   [lang === "ru" ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`],
@@ -475,15 +637,45 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
 
             {/* AI / Analysis */}
             <TabsContent value="ai" className="p-5 sm:p-8 mt-0">
-              <SectionTitle>{tr.aiComment}</SectionTitle>
-              <div className="bg-surface-el border border-info/30 rounded-xl p-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                {analysis}
+              <div className="flex items-center justify-between mb-4 gap-3">
+                <SectionTitle className="mb-0">{tr.aiComment}</SectionTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={fetchAi}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? "…" : tr.aiRefresh}
+                </Button>
               </div>
+              {aiLoading ? (
+                <div className="bg-surface-el border border-info/30 rounded-xl p-6 text-sm text-muted-foreground flex items-center gap-3">
+                  <span className="inline-block w-3 h-3 rounded-full bg-primary-glow animate-pulse" />
+                  {tr.aiLoading}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className={cn(
+                      "border rounded-xl p-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap",
+                      aiError ? "bg-warning/10 border-warning/40" : "bg-surface-el border-info/30",
+                    )}
+                  >
+                    {analysis}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mt-3">
+                    {aiError ? (lang === "ru" ? "Локальный анализ (AI недоступен)" : "Local analysis (AI unavailable)") : tr.aiPoweredBy}
+                  </div>
+                </>
+              )}
             </TabsContent>
           </Tabs>
 
-          <div className="px-5 sm:px-8 pb-6">
-            <Button onClick={reset} variant="outline" className="w-full mt-2">
+          <div className="px-5 sm:px-8 pb-6 space-y-2">
+            <Button onClick={exportPdf} className="w-full mt-2 shadow-glow">
+              ⬇ {tr.exportPdf}
+            </Button>
+            <Button onClick={reset} variant="outline" className="w-full">
               {tr.recalculate}
             </Button>
           </div>
@@ -664,6 +856,43 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
         {/* STEP 6 — modifiers */}
         {step === 6 && (
           <div className="space-y-6">
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
+                {tr.pricingModel}
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-3">{tr.pricingModelHelp}</div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                {PRICING_MODELS.map((pm) => {
+                  const sel = pricingModel === pm.id;
+                  return (
+                    <button
+                      key={pm.id}
+                      type="button"
+                      onClick={() => setPricingModel(pm.id)}
+                      className={cn(
+                        "text-left p-3 rounded-xl border transition-all",
+                        sel
+                          ? "bg-primary/15 border-primary shadow-glow"
+                          : "bg-surface-hi border-border/50 hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-base text-primary-glow">{pm.icon}</span>
+                        <span className="text-[10px] tabular-nums text-muted-foreground">
+                          {pm.mult === 1 ? "×1.0" : pm.mult > 1 ? `+${Math.round((pm.mult - 1) * 100)}%` : `−${Math.round((1 - pm.mult) * 100)}%`}
+                        </span>
+                      </div>
+                      <div className="text-xs sm:text-sm font-bold text-foreground leading-snug">
+                        {lang === "ru" ? pm.ru : pm.en}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                        {lang === "ru" ? pm.descRu : pm.descEn}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <ModRow label={tr.riskBuf}>
               {tr.riskLevels.map((r) => (
                 <Chip key={r.id} selected={riskBuf === r.id} onClick={() => setRiskBuf(r.id)}>
