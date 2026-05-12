@@ -419,9 +419,13 @@ export default function Calculator() {
                 <AnimNum value={R.cMin} /> – <AnimNum value={R.cMax} />
               </span>{" "}
               <span className="text-foreground">{R.sym}</span>
+              {pricingModel === "retainer" && (
+                <span className="text-base sm:text-xl text-muted-foreground font-semibold">{tr.perMonth}</span>
+              )}
             </div>
             <div className="mt-4 text-xs sm:text-sm text-muted-foreground">
               {(lang === "ru" ? R.wt.ru : R.wt.en)} ·{" "}
+              {(lang === "ru" ? R.pm.ru : R.pm.en)} ·{" "}
               {(lang === "ru" ? R.urgEntry.ru : R.urgEntry.en)} ·{" "}
               {(lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en)}
             </div>
