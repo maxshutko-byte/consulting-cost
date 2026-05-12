@@ -226,6 +226,7 @@ export default function Calculator() {
   const reset = () => {
     setStep(0); setWtId(null); setVolumeAns({}); setComplexAns({}); setUnivAns({});
     setUrgency(null); setFormat(null); setDone(false); setActiveTab("summary"); setCopied(false);
+    setAiText(""); setAiError(false); setAiLoading(false);
   };
 
   const clearHistory = () => {
