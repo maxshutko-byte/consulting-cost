@@ -5,15 +5,20 @@ import {
   UNIVERSAL,
   URGENCY_DATA,
   FORMAT_DATA,
+  PRICING_MODELS,
   I18N,
   type Lang,
   type Currency,
   type Criterion,
+  type PricingModelId,
 } from "@/lib/calculator-data";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { useServerFn } from "@tanstack/react-start";
+import { analyzeEstimate } from "@/lib/ai-analysis.functions";
+import jsPDF from "jspdf";
 
 /* ---------- Animated number ---------- */
 function AnimNum({ value }: { value: number }) {
