@@ -257,16 +257,7 @@ export default function Calculator() {
       { label: tr.scenario3, sc: calcCore(1.0, { overhead: 0, risk: 0 }), tone: "success" },
     ];
 
-    // Build risk flags
-    const flags = useMemo(() => {
-      const f: string[] = [];
-      if (urgency === "express") f.push(lang === "ru" ? "высокая срочность увеличивает риск ошибок и требует доступа к ЛПР 24/7" : "express urgency raises error risk and demands 24/7 stakeholder access");
-      if (industryExp === "new") f.push(lang === "ru" ? "новая отрасль — заложите время на погружение" : "new industry — budget time for domain immersion");
-      if (univAns.task_clarity === "vague") f.push(lang === "ru" ? "размытое ТЗ: рекомендуется отдельная фаза скоупинга" : "vague brief: a dedicated scoping phase is recommended");
-      if (univAns.data_clarity === "messy") f.push(lang === "ru" ? "данные хаотичны — добавьте этап подготовки" : "data is chaotic — add a data-prep stage");
-      if (parseInt(riskBuf) === 0) f.push(lang === "ru" ? "буфер не заложен — любое отклонение ударит по марже" : "no risk buffer — any deviation will hit your margin");
-      return f;
-    }, [urgency, industryExp, univAns, riskBuf, lang]);
+    // (flags computed at top-level)
 
     const buildLocalAnalysis = (): string => {
       const headline = lang === "ru"
