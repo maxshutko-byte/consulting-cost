@@ -852,6 +852,43 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
         {/* STEP 6 — modifiers */}
         {step === 6 && (
           <div className="space-y-6">
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
+                {tr.pricingModel}
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-3">{tr.pricingModelHelp}</div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                {PRICING_MODELS.map((pm) => {
+                  const sel = pricingModel === pm.id;
+                  return (
+                    <button
+                      key={pm.id}
+                      type="button"
+                      onClick={() => setPricingModel(pm.id)}
+                      className={cn(
+                        "text-left p-3 rounded-xl border transition-all",
+                        sel
+                          ? "bg-primary/15 border-primary shadow-glow"
+                          : "bg-surface-hi border-border/50 hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-base text-primary-glow">{pm.icon}</span>
+                        <span className="text-[10px] tabular-nums text-muted-foreground">
+                          {pm.mult === 1 ? "×1.0" : pm.mult > 1 ? `+${Math.round((pm.mult - 1) * 100)}%` : `−${Math.round((1 - pm.mult) * 100)}%`}
+                        </span>
+                      </div>
+                      <div className="text-xs sm:text-sm font-bold text-foreground leading-snug">
+                        {lang === "ru" ? pm.ru : pm.en}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                        {lang === "ru" ? pm.descRu : pm.descEn}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <ModRow label={tr.riskBuf}>
               {tr.riskLevels.map((r) => (
                 <Chip key={r.id} selected={riskBuf === r.id} onClick={() => setRiskBuf(r.id)}>
