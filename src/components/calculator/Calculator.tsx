@@ -246,14 +246,18 @@ export default function Calculator() {
       { label: tr.scenario3, sc: calcCore(1.0, { overhead: 0, risk: 0 }), tone: "success" },
     ];
 
-    // Local deterministic analysis (no API)
-    const buildAnalysis = (): string => {
-      const flags: string[] = [];
-      if (urgency === "express") flags.push(lang === "ru" ? "высокая срочность увеличивает риск ошибок и требует доступа к ЛПР 24/7" : "express urgency raises error risk and demands 24/7 stakeholder access");
-      if (industryExp === "new") flags.push(lang === "ru" ? "новая отрасль — заложите время на погружение" : "new industry — budget time for domain immersion");
-      if (univAns.task_clarity === "vague") flags.push(lang === "ru" ? "размытое ТЗ: рекомендуется отдельная фаза скоупинга" : "vague brief: a dedicated scoping phase is recommended");
-      if (univAns.data_clarity === "messy") flags.push(lang === "ru" ? "данные хаотичны — добавьте этап подготовки" : "data is chaotic — add a data-prep stage");
-      if (parseInt(riskBuf) === 0) flags.push(lang === "ru" ? "буфер не заложен — любое отклонение ударит по марже" : "no risk buffer — any deviation will hit your margin");
+    // Build risk flags
+    const flags = useMemo(() => {
+      const f: string[] = [];
+      if (urgency === "express") f.push(lang === "ru" ? "высокая срочность увеличивает риск ошибок и требует доступа к ЛПР 24/7" : "express urgency raises error risk and demands 24/7 stakeholder access");
+      if (industryExp === "new") f.push(lang === "ru" ? "новая отрасль — заложите время на погружение" : "new industry — budget time for domain immersion");
+      if (univAns.task_clarity === "vague") f.push(lang === "ru" ? "размытое ТЗ: рекомендуется отдельная фаза скоупинга" : "vague brief: a dedicated scoping phase is recommended");
+      if (univAns.data_clarity === "messy") f.push(lang === "ru" ? "данные хаотичны — добавьте этап подготовки" : "data is chaotic — add a data-prep stage");
+      if (parseInt(riskBuf) === 0) f.push(lang === "ru" ? "буфер не заложен — любое отклонение ударит по марже" : "no risk buffer — any deviation will hit your margin");
+      return f;
+    }, [urgency, industryExp, univAns, riskBuf, lang]);
+
+    const buildLocalAnalysis = (): string => {
       const headline = lang === "ru"
         ? `Расчёт выглядит сбалансированным: ${R.hMin}–${R.hMax} ч при ставке ${R.rMin}–${R.rMax} €/час даёт коридор ${R.cMin.toLocaleString()}–${R.cMax.toLocaleString()} ${R.sym}.`
         : `The estimate looks balanced: ${R.hMin}–${R.hMax} h at ${R.rMin}–${R.rMax} €/hr gives a range of ${R.cMin.toLocaleString()}–${R.cMax.toLocaleString()} ${R.sym}.`;
@@ -265,7 +269,143 @@ export default function Calculator() {
         : "Before sending to the client, confirm decision-makers, acceptance format and revision expectations.";
       return `${headline}\n\n${risks}\n\n${advice}`;
     };
-    const analysis = buildAnalysis();
+
+    const fetchAi = async () => {
+      setAiLoading(true);
+      setAiError(false);
+      try {
+        const res = await runAnalyze({
+          data: {
+            lang,
+            workType: lang === "ru" ? R.wt.ru : R.wt.en,
+            urgency: lang === "ru" ? R.urgEntry.ru : R.urgEntry.en,
+            format: lang === "ru" ? R.fmtEntry.ru : R.fmtEntry.en,
+            hours: { min: R.hMin, max: R.hMax },
+            rate: { min: R.rMin, max: R.rMax },
+            cost: { min: R.cMin, max: R.cMax, sym: R.sym },
+            multiplier: R.m,
+            riskBuffer: parseInt(riskBuf),
+            overhead: parseInt(overhead),
+            industryExp,
+            clientType: clientNew,
+            pricingModel: lang === "ru" ? R.pm.ru : R.pm.en,
+            flags,
+          },
+        });
+        if (res.error) {
+          setAiError(true);
+          setAiText(res.text + "\n\n" + buildLocalAnalysis());
+        } else {
+          setAiText(res.text || buildLocalAnalysis());
+        }
+      } catch (e) {
+        console.error(e);
+        setAiError(true);
+        setAiText(buildLocalAnalysis());
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    // Auto-fetch AI on first open of analysis tab
+    useEffect(() => {
+      if (activeTab === "ai" && !aiText && !aiLoading) {
+        fetchAi();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
+
+    const exportPdf = () => {
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 48;
+      let y = margin;
+      const isRu = lang === "ru";
+
+      const ensure = (need: number) => {
+        if (y + need > pageH - margin) { doc.addPage(); y = margin; }
+      };
+      const h1 = (t: string) => {
+        ensure(28);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(20, 30, 60);
+        doc.text(t, margin, y); y += 24;
+      };
+      const h2 = (t: string) => {
+        ensure(22);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
+        doc.text(t, margin, y); y += 16;
+      };
+      const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...color);
+        const lines = doc.splitTextToSize(t, pageW - margin * 2);
+        for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
+      };
+      const kv = (k: string, v: string) => {
+        ensure(14);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
+        doc.text(k, margin, y);
+        doc.setFont("helvetica", "bold"); doc.setTextColor(20, 30, 60);
+        doc.text(v, pageW - margin, y, { align: "right" });
+        y += 14;
+      };
+
+      h1(isRu ? "Смета консалтингового проекта" : "Consulting Project Estimate");
+      p(`${isRu ? "Дата" : "Date"}: ${new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB")}`, [120,120,130]);
+      y += 6;
+
+      // Hero
+      doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 60, "F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
+      doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 14, y + 18);
+      doc.setFontSize(20); doc.setTextColor(30, 60, 200);
+      doc.text(`${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}`, margin + 14, y + 44);
+      y += 76;
+
+      h2(isRu ? "Параметры" : "Parameters");
+      kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
+      kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
+      kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
+      kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
+      kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
+      kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
+      kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
+      kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
+      kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
+      kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
+      kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
+      y += 8;
+
+      h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
+      tr.phases.forEach((ph, i) => {
+        const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
+        const hrs = Math.round(R.hours * phasesPct[i] / 100);
+        kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
+      });
+      y += 8;
+
+      h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
+      scenarios.forEach(({ label, sc }) => {
+        if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
+      });
+      y += 8;
+
+      if (aiText) {
+        h2(isRu ? "Анализ сметы" : "Estimate analysis");
+        p(aiText);
+        y += 4;
+      }
+
+      ensure(40);
+      doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
+      doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(120,120,130);
+      const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
+      for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
+
+      doc.save(`estimate-${Date.now()}.pdf`);
+    };
+
+    const analysis = aiText || buildLocalAnalysis();
 
     return (
       <div className="w-full max-w-4xl mx-auto">
