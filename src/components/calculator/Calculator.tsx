@@ -7,6 +7,8 @@ import {
   FORMAT_DATA,
   PRICING_MODELS,
   I18N,
+  WORK_TYPE_DETAILS,
+  DETAILS_I18N,
   type Lang,
   type Currency,
   type Criterion,
@@ -15,10 +17,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
 import jsPDF from "jspdf";
+
+function DetailSection({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.14em] text-primary-glow font-bold mb-1">
+        {title}
+      </div>
+      <ul className="space-y-1">
+        {items.map((it, i) => (
+          <li key={i} className="text-xs text-foreground/90 leading-snug flex gap-2">
+            <span className="text-primary-glow shrink-0">•</span>
+            <span>{it}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /* ---------- Animated number ---------- */
 function AnimNum({ value }: { value: number }) {
@@ -724,29 +746,76 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {WORK_TYPES.map((wt) => {
               const sel = wtId === wt.id;
+              const det = WORK_TYPE_DETAILS[wt.id]?.[lang];
+              const dt = DETAILS_I18N[lang];
               return (
-                <button
+                <div
                   key={wt.id}
-                  onClick={() => {
-                    setWtId(wt.id);
-                    setVolumeAns({});
-                    setComplexAns({});
-                  }}
                   className={cn(
-                    "text-left p-3 sm:p-4 rounded-xl border transition-all",
+                    "relative text-left rounded-xl border transition-all",
                     sel
                       ? "bg-primary/15 border-primary shadow-glow"
                       : "bg-surface-hi border-border/50 hover:border-primary/40",
                   )}
                 >
-                  <span className="text-lg sm:text-xl text-primary-glow block mb-1">{wt.icon}</span>
-                  <span className="block text-xs sm:text-sm font-bold text-foreground leading-snug">
-                    {lang === "ru" ? wt.ru : wt.en}
-                  </span>
-                  <span className="block text-[10px] sm:text-xs text-muted-foreground mt-1">
-                    {lang === "ru" ? wt.subRu : wt.subEn}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWtId(wt.id);
+                      setVolumeAns({});
+                      setComplexAns({});
+                    }}
+                    className="block w-full text-left p-3 sm:p-4 pr-8 sm:pr-9"
+                  >
+                    <span className="text-lg sm:text-xl text-primary-glow block mb-1">{wt.icon}</span>
+                    <span className="block text-xs sm:text-sm font-bold text-foreground leading-snug">
+                      {lang === "ru" ? wt.ru : wt.en}
+                    </span>
+                    <span className="block text-[10px] sm:text-xs text-muted-foreground mt-1">
+                      {lang === "ru" ? wt.subRu : wt.subEn}
+                    </span>
+                  </button>
+                  {det && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={dt.moreInfo}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-2 right-2 p-1.5 rounded-md text-muted-foreground hover:text-primary-glow hover:bg-primary/10 transition-colors"
+                        >
+                          <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        side="top"
+                        align="end"
+                        className="w-80 max-w-[90vw] bg-surface-hi border-border text-foreground p-4 space-y-3"
+                      >
+                        <div>
+                          <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                            <span className="text-primary-glow">{wt.icon}</span>
+                            {lang === "ru" ? wt.ru : wt.en}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            {lang === "ru" ? wt.subRu : wt.subEn}
+                          </div>
+                        </div>
+                        <DetailSection title={dt.process} items={det.process} />
+                        <DetailSection title={dt.deliverables} items={det.deliverables} />
+                        <DetailSection title={dt.resources} items={det.resources} />
+                        {det.notes && (
+                          <div className="pt-2 border-t border-border/50">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-primary-glow font-bold mb-1">
+                              {dt.notes}
+                            </div>
+                            <div className="text-xs text-muted-foreground leading-snug">{det.notes}</div>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
               );
             })}
           </div>
