@@ -24,6 +24,24 @@ import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
 import jsPDF from "jspdf";
 
+function DetailSection({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.14em] text-primary-glow font-bold mb-1">
+        {title}
+      </div>
+      <ul className="space-y-1">
+        {items.map((it, i) => (
+          <li key={i} className="text-xs text-foreground/90 leading-snug flex gap-2">
+            <span className="text-primary-glow shrink-0">•</span>
+            <span>{it}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /* ---------- Animated number ---------- */
 function AnimNum({ value }: { value: number }) {
   const [d, setD] = useState(value);
