@@ -7,6 +7,8 @@ import {
   FORMAT_DATA,
   PRICING_MODELS,
   I18N,
+  WORK_TYPE_DETAILS,
+  DETAILS_I18N,
   type Lang,
   type Currency,
   type Criterion,
@@ -15,6 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
