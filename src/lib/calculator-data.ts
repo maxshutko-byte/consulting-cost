@@ -349,3 +349,318 @@ export const I18N = {
 } as const;
 
 export type Currency = "EUR" | "USD" | "RUB";
+
+export type WorkTypeDetails = {
+  process: string[];
+  deliverables: string[];
+  resources: string[];
+  notes?: string;
+};
+
+export const WORK_TYPE_DETAILS: Record<string, { ru: WorkTypeDetails; en: WorkTypeDetails }> = {
+  analysis: {
+    ru: {
+      process: [
+        "Сбор вводных и интервью со стейкхолдерами",
+        "Описание AS-IS: схемы, роли, метрики, узкие места",
+        "Проектирование TO-BE и плана перехода",
+        "Презентация результатов и согласование",
+      ],
+      deliverables: ["BPMN/диаграммы процессов", "Карта узких мест и рисков", "Рекомендации TO-BE"],
+      resources: ["Бизнес-аналитик", "Доступ к стейкхолдерам (2–6 ч интервью)", "Miro / Visio / Bizagi"],
+      notes: "Глубина зависит от количества процессов, систем и уровня вложенности.",
+    },
+    en: {
+      process: [
+        "Kick-off and stakeholder interviews",
+        "AS-IS mapping: flows, roles, KPIs, bottlenecks",
+        "TO-BE design and transition plan",
+        "Presentation and sign-off",
+      ],
+      deliverables: ["BPMN/process diagrams", "Bottleneck & risk map", "TO-BE recommendations"],
+      resources: ["Business analyst", "Stakeholder access (2–6h interviews)", "Miro / Visio / Bizagi"],
+      notes: "Depth scales with process count, systems and nesting level.",
+    },
+  },
+  docs: {
+    ru: {
+      process: [
+        "Анализ исходных материалов и шаблонов",
+        "Структурирование и написание разделов",
+        "Сбор обратной связи и итерации",
+        "Финальное оформление и сдача",
+      ],
+      deliverables: ["Готовый регламент / политика / СОП", "Шаблоны и приложения", "Журнал версий"],
+      resources: ["Бизнес-аналитик / технический писатель", "Эксперт предметной области для ревью", "Корпоративные шаблоны"],
+      notes: "При юридическом ревью добавляется время юриста и согласующих сторон.",
+    },
+    en: {
+      process: [
+        "Review of source materials and templates",
+        "Outlining and drafting sections",
+        "Feedback rounds and iterations",
+        "Final formatting and delivery",
+      ],
+      deliverables: ["Ready regulation / policy / SOP", "Templates and appendices", "Version log"],
+      resources: ["Business analyst / tech writer", "Subject matter expert for review", "Corporate templates"],
+      notes: "Legal review adds lawyer and approver time.",
+    },
+  },
+  consulting: {
+    ru: {
+      process: [
+        "Подготовка повестки и материалов",
+        "Проведение сессии / консультации",
+        "Фасилитация решений",
+        "Краткий или полный отчёт по итогам",
+      ],
+      deliverables: ["Протокол решений", "Презентация / слайды", "Чек-лист следующих шагов"],
+      resources: ["Эксперт-консультант", "Фасилитатор (для групп 5+)", "Miro / Zoom / переговорная"],
+      notes: "Стоимость растёт с числом участников, форматом и уровнем конфликта интересов.",
+    },
+    en: {
+      process: [
+        "Agenda and materials prep",
+        "Run the session / consultation",
+        "Decision facilitation",
+        "Brief or full follow-up report",
+      ],
+      deliverables: ["Decisions log", "Slide deck", "Next-steps checklist"],
+      resources: ["Expert consultant", "Facilitator (for 5+ groups)", "Miro / Zoom / meeting room"],
+      notes: "Cost scales with participants, format and conflict level.",
+    },
+  },
+  automation: {
+    ru: {
+      process: [
+        "Сбор требований и описание сценариев",
+        "Постановка задачи: ТЗ, прототипы, ролевая модель",
+        "Контроль реализации подрядчиком",
+        "Приёмка, тестирование и сдача",
+      ],
+      deliverables: ["Техническое задание", "Схемы интеграций", "Чек-лист приёмки"],
+      resources: ["Бизнес-аналитик / системный аналитик", "Доступ к смежным системам и владельцам", "Figma / Draw.io / Jira"],
+      notes: "Legacy-системы и кастомизация существенно увеличивают трудоёмкость.",
+    },
+    en: {
+      process: [
+        "Requirements gathering and scenarios",
+        "Task definition: spec, prototypes, role model",
+        "Vendor delivery oversight",
+        "Acceptance, testing and handover",
+      ],
+      deliverables: ["Technical specification", "Integration diagrams", "Acceptance checklist"],
+      resources: ["Business / systems analyst", "Access to adjacent systems and owners", "Figma / Draw.io / Jira"],
+      notes: "Legacy systems and customisation significantly increase effort.",
+    },
+  },
+  audit: {
+    ru: {
+      process: [
+        "Запрос и анализ документации и данных",
+        "Полевые интервью и наблюдение",
+        "Бенчмарк и оценка по критериям",
+        "Отчёт с выводами и рекомендациями",
+      ],
+      deliverables: ["Отчёт аудита", "Карта рисков и несоответствий", "План корректирующих действий"],
+      resources: ["Эксперт-аудитор", "Доступ к данным и сотрудникам", "Чек-листы / методология"],
+      notes: "Закрытые данные и конфликт интересов увеличивают сроки.",
+    },
+    en: {
+      process: [
+        "Document and data request & review",
+        "Field interviews and observation",
+        "Benchmark and scoring",
+        "Findings and recommendations report",
+      ],
+      deliverables: ["Audit report", "Risk & gap map", "Remediation plan"],
+      resources: ["Expert auditor", "Access to data and staff", "Checklists / methodology"],
+      notes: "Closed data and conflicts of interest extend timelines.",
+    },
+  },
+  training: {
+    ru: {
+      process: [
+        "Анализ уровня аудитории и целей обучения",
+        "Подготовка программы и материалов",
+        "Проведение модулей / воркшопов",
+        "Оценка знаний и обратная связь",
+      ],
+      deliverables: ["Программа курса", "Слайды и раздаточные материалы", "Тесты / сертификаты"],
+      resources: ["Тренер-эксперт", "Платформа (Zoom / LMS) или аудитория", "Кейсы и упражнения"],
+      notes: "Корпоративная адаптация и симуляции повышают стоимость.",
+    },
+    en: {
+      process: [
+        "Audience level and learning goals analysis",
+        "Program and materials prep",
+        "Module / workshop delivery",
+        "Assessment and feedback",
+      ],
+      deliverables: ["Course program", "Slides and handouts", "Tests / certificates"],
+      resources: ["Expert trainer", "Platform (Zoom / LMS) or venue", "Cases and exercises"],
+      notes: "Corporate customisation and simulations raise the cost.",
+    },
+  },
+  market: {
+    ru: {
+      process: [
+        "Сегментирование и описание рынка",
+        "Анализ конкурентов и трендов",
+        "Сбор данных (open / paid / first-party)",
+        "Визуализация выводов и презентация",
+      ],
+      deliverables: ["Аналитический отчёт", "Карта конкурентов", "Дашборд / графики"],
+      resources: ["Маркет-аналитик", "Подписки на базы данных (Statista, SimilarWeb и т.п.)", "Tableau / Power BI"],
+      notes: "Первичные исследования и глобальный охват существенно увеличивают сроки.",
+    },
+    en: {
+      process: [
+        "Market segmentation and definition",
+        "Competitor and trend analysis",
+        "Data collection (open / paid / first-party)",
+        "Visualisation and presentation",
+      ],
+      deliverables: ["Analytical report", "Competitor map", "Dashboard / charts"],
+      resources: ["Market analyst", "Database subscriptions (Statista, SimilarWeb, etc.)", "Tableau / Power BI"],
+      notes: "Primary research and global scope significantly extend timelines.",
+    },
+  },
+  forecast: {
+    ru: {
+      process: [
+        "Сбор исторических данных и драйверов",
+        "Выбор методологии (экспертная / эконометрика)",
+        "Построение сценариев и финансовой модели",
+        "Стресс-тест и презентация",
+      ],
+      deliverables: ["Финансовая модель в Excel/Sheets", "Сценарии (базовый, оптимист, пессимист)", "Отчёт с допущениями"],
+      resources: ["Аналитик / финансовый моделист", "Доступ к историческим данным", "Excel / Python / R"],
+      notes: "Длинный горизонт и высокая волатильность увеличивают сложность.",
+    },
+    en: {
+      process: [
+        "Historical data and drivers collection",
+        "Methodology selection (expert / econometrics)",
+        "Scenarios and financial model build",
+        "Stress test and presentation",
+      ],
+      deliverables: ["Excel/Sheets financial model", "Scenarios (base, upside, downside)", "Report with assumptions"],
+      resources: ["Analyst / financial modeler", "Access to historical data", "Excel / Python / R"],
+      notes: "Long horizon and high volatility raise complexity.",
+    },
+  },
+  idea: {
+    ru: {
+      process: [
+        "Структурирование концепции и гипотез",
+        "Оценка рынка (TAM/SAM/SOM) и юнит-экономики",
+        "CustDev / первичные интервью",
+        "Финальная оценка рисков и потенциала",
+      ],
+      deliverables: ["Бизнес-кейс / one-pager", "Карта рисков", "Рекомендация go / no-go"],
+      resources: ["Бизнес-аналитик / продуктовый эксперт", "Респонденты для CustDev", "Источники рынка"],
+      notes: "Новые рынки и регуляторные риски требуют дополнительной экспертизы.",
+    },
+    en: {
+      process: [
+        "Concept and hypotheses structuring",
+        "Market sizing (TAM/SAM/SOM) and unit economics",
+        "CustDev / primary interviews",
+        "Final risk and potential assessment",
+      ],
+      deliverables: ["Business case / one-pager", "Risk map", "Go / no-go recommendation"],
+      resources: ["Business / product analyst", "CustDev respondents", "Market data sources"],
+      notes: "New markets and regulatory risks require extra expertise.",
+    },
+  },
+  tech: {
+    ru: {
+      process: [
+        "Определение критериев выбора",
+        "Long-list инструментов и платформ",
+        "Матрица сравнения и short-list",
+        "PoC и рекомендации по внедрению",
+      ],
+      deliverables: ["Сравнительная матрица", "Отчёт с обоснованием", "Roadmap внедрения"],
+      resources: ["Технологический аналитик", "Демо-доступы / триалы", "Эксперт по предметной области"],
+      notes: "PoC и нишевые решения добавляют значительное время.",
+    },
+    en: {
+      process: [
+        "Selection criteria definition",
+        "Long-list of tools and platforms",
+        "Comparison matrix and short-list",
+        "PoC and implementation recommendations",
+      ],
+      deliverables: ["Comparison matrix", "Justification report", "Implementation roadmap"],
+      resources: ["Tech analyst", "Demo access / trials", "Domain expert"],
+      notes: "PoC and niche tools add significant time.",
+    },
+  },
+  bizreq: {
+    ru: {
+      process: [
+        "Интервью с заказчиками и пользователями",
+        "Формализация требований (BRD / User Stories / Use Cases)",
+        "Приоритизация (MoSCoW) и согласование",
+        "Поддержка изменений и трассировка",
+      ],
+      deliverables: ["Документ требований", "Матрица трассировки", "Backlog с приоритетами"],
+      resources: ["Бизнес-аналитик", "Доступ к ЛПР и пользователям", "Jira / Confluence"],
+      notes: "Размытые требования и комплаенс увеличивают трудоёмкость.",
+    },
+    en: {
+      process: [
+        "Stakeholder and user interviews",
+        "Requirements formalisation (BRD / User Stories / Use Cases)",
+        "Prioritisation (MoSCoW) and sign-off",
+        "Change support and traceability",
+      ],
+      deliverables: ["Requirements document", "Traceability matrix", "Prioritised backlog"],
+      resources: ["Business analyst", "Access to decision-makers and users", "Jira / Confluence"],
+      notes: "Vague requirements and compliance increase effort.",
+    },
+  },
+  projdoc: {
+    ru: {
+      process: [
+        "Определение типа и аудитории документа",
+        "Структура и шаблоны",
+        "Написание разделов и схем",
+        "Публикация в нужных форматах",
+      ],
+      deliverables: ["Готовая документация (PDF/Word/Confluence)", "Диаграммы и схемы", "Гайды для пользователей"],
+      resources: ["Технический писатель / аналитик", "Доступ к экспертам и системам", "Confluence / Notion / Word"],
+      notes: "Несколько форматов публикации и поддержка после сдачи учитываются отдельно.",
+    },
+    en: {
+      process: [
+        "Document type and audience definition",
+        "Structure and templates",
+        "Sections and diagrams authoring",
+        "Publishing in required formats",
+      ],
+      deliverables: ["Ready documentation (PDF/Word/Confluence)", "Diagrams and schemes", "User guides"],
+      resources: ["Tech writer / analyst", "Access to experts and systems", "Confluence / Notion / Word"],
+      notes: "Multiple publication formats and post-delivery support are billed separately.",
+    },
+  },
+};
+
+export const DETAILS_I18N = {
+  ru: {
+    moreInfo: "Подробнее",
+    process: "Процесс работы",
+    deliverables: "Что получите",
+    resources: "Ресурсы",
+    notes: "Важно",
+  },
+  en: {
+    moreInfo: "Details",
+    process: "Process",
+    deliverables: "Deliverables",
+    resources: "Resources",
+    notes: "Note",
+  },
+} as const;
