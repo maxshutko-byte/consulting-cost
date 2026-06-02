@@ -6,6 +6,8 @@ import {
   URGENCY_DATA,
   FORMAT_DATA,
   PRICING_MODELS,
+  RESOURCE_ROLES,
+  PROJECT_TEMPLATES,
   I18N,
   WORK_TYPE_DETAILS,
   DETAILS_I18N,
@@ -13,16 +15,73 @@ import {
   type Currency,
   type Criterion,
   type PricingModelId,
+  type ProjectTemplate,
 } from "@/lib/calculator-data";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
 import jsPDF from "jspdf";
+
+/* ============ Extra i18n (additive) ============ */
+const NEW_I18N = {
+  ru: {
+    templates: "Готовые шаблоны",
+    templatesHelp: "Один клик заполнит все шаги типовыми параметрами",
+    teamMix: "Состав команды",
+    teamMixHelp: "Включите, чтобы рассчитать смету через роли × ставки × доли часов",
+    teamEnable: "Использовать состав команды",
+    teamRole: "Роль", teamRate: "€/ч", teamShare: "Доля часов",
+    teamBlended: "Смешанная ставка",
+    teamSumWarn: "Сумма долей должна быть 100%",
+    waterfall: "Состав цены",
+    waterfallHelp: "Как базовая цена превращается в итоговую",
+    budget: "Бюджет",
+    budgetTarget: "Целевой бюджет",
+    budgetMatches: "Подходящие сценарии",
+    budgetNoMatch: "Под этот бюджет — варианты дороже/дешевле:",
+    proposalTo: "Кому", proposalFrom: "От",
+    proposalValidUntil: "Предложение действует до",
+    proposalPaymentTerms: "Условия оплаты",
+    proposalPaymentTermsText: "50% предоплата · 50% по факту приёмки. Безналичный расчёт, оплата в течение 5 рабочих дней.",
+    proposalSignature: "Подпись",
+    proposalCompany: "Компания",
+    proposalContractor: "Исполнитель",
+    proposalDocTitle: "Коммерческое предложение",
+    proposalLoadingFont: "Загрузка шрифта для PDF…",
+  },
+  en: {
+    templates: "Project templates",
+    templatesHelp: "One click fills all steps with typical parameters",
+    teamMix: "Team composition",
+    teamMixHelp: "Enable to estimate via roles × rates × hour shares",
+    teamEnable: "Use team composition",
+    teamRole: "Role", teamRate: "€/h", teamShare: "Hours share",
+    teamBlended: "Blended rate",
+    teamSumWarn: "Shares must sum to 100%",
+    waterfall: "Price waterfall",
+    waterfallHelp: "How the base cost turns into the final price",
+    budget: "Budget",
+    budgetTarget: "Target budget",
+    budgetMatches: "Matching scenarios",
+    budgetNoMatch: "No exact match — closest options above/below:",
+    proposalTo: "To", proposalFrom: "From",
+    proposalValidUntil: "Proposal valid until",
+    proposalPaymentTerms: "Payment terms",
+    proposalPaymentTermsText: "50% upfront · 50% upon acceptance. Bank transfer, payable within 5 business days.",
+    proposalSignature: "Signature",
+    proposalCompany: "Company",
+    proposalContractor: "Contractor",
+    proposalDocTitle: "Commercial Proposal",
+    proposalLoadingFont: "Loading PDF font…",
+  },
+} as const;
+
 
 function DetailSection({ title, items }: { title: string; items: string[] }) {
   return (
@@ -129,6 +188,21 @@ export default function Calculator() {
   const [customRateMax, setCustomRateMax] = useState(95);
   const [pricingModel, setPricingModel] = useState<PricingModelId>("tm");
 
+  // Team mix (roles × rates × shares)
+  const [teamEnabled, setTeamEnabled] = useState(false);
+  const [teamRates, setTeamRates] = useState<Record<string, number>>(
+    () => Object.fromEntries(RESOURCE_ROLES.map((r) => [r.id, r.rate])),
+  );
+  const [teamShares, setTeamShares] = useState<Record<string, number>>(
+    () => Object.fromEntries(RESOURCE_ROLES.map((r) => [r.id, r.defaultShare])),
+  );
+
+  // Budget slider (target, in selected currency)
+  const [budgetTarget, setBudgetTarget] = useState(3000);
+  // PDF font loading state
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+
   const [done, setDone] = useState(false);
   const [activeTab, setActiveTab] = useState("summary");
   const [copied, setCopied] = useState(false);
@@ -178,6 +252,19 @@ export default function Calculator() {
     setter((prev) => ({ ...prev, [id]: val }));
   }
 
+  // Blended rate from team mix (when enabled)
+  const blendedRate = useMemo(() => {
+    const sumShare = RESOURCE_ROLES.reduce((s, r) => s + (teamShares[r.id] || 0), 0) || 1;
+    return RESOURCE_ROLES.reduce(
+      (acc, r) => acc + ((teamShares[r.id] || 0) / sumShare) * (teamRates[r.id] || 0),
+      0,
+    );
+  }, [teamRates, teamShares]);
+  const teamSharesSum = useMemo(
+    () => RESOURCE_ROLES.reduce((s, r) => s + (teamShares[r.id] || 0), 0),
+    [teamShares],
+  );
+
   const calcCore = useMemo(
     () => (urgMultOverride: number | null = null, opts: { overhead?: number; risk?: number } = {}) => {
       if (!wtId || !wtCrit || !urgency || !format) return null;
@@ -202,9 +289,16 @@ export default function Calculator() {
       const pm = PRICING_MODELS.find((p) => p.id === pricingModel)!;
       m *= pm.mult;
       const hours = Math.max(1, Math.round(baseH * m));
-      const rateBase = wt.baseRate * uMult;
-      const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
-      const rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+      // Rate: team blended (if enabled) overrides custom rate range
+      let rMin: number, rMax: number;
+      if (teamEnabled && blendedRate > 0) {
+        rMin = Math.round(blendedRate * 0.95);
+        rMax = Math.round(blendedRate * 1.05);
+      } else {
+        const rateBase = wt.baseRate * uMult;
+        rMin = Math.max(customRateMin, Math.round(rateBase - 5));
+        rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+      }
       const cur = tr.currencies.find((c) => c.id === currency)!;
       const exch = cur.rate;
       const hMin = Math.max(1, Math.round(hours * 0.85));
@@ -216,14 +310,15 @@ export default function Calculator() {
         cMin = Math.round(minLocal);
         cMax = Math.round(minLocal * 1.2);
       }
-      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm };
+      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm, baseH };
     },
     [
       wtId, wtCrit, urgency, format, volumeAns, complexAns, univAns,
       clientNew, industryExp, overhead, riskBuf, customRateMin, customRateMax,
-      currency, minThreshold, tr, pricingModel,
+      currency, minThreshold, tr, pricingModel, teamEnabled, blendedRate,
     ],
   );
+
 
   const R = calcCore();
 
@@ -249,7 +344,22 @@ export default function Calculator() {
     setStep(0); setWtId(null); setVolumeAns({}); setComplexAns({}); setUnivAns({});
     setUrgency(null); setFormat(null); setDone(false); setActiveTab("summary"); setCopied(false);
     setAiText(""); setAiError(false); setAiLoading(false);
+    setTeamEnabled(false);
   };
+
+  const applyTemplate = (t: ProjectTemplate) => {
+    setWtId(t.wtId);
+    setVolumeAns(t.volumeAns);
+    setComplexAns(t.complexAns);
+    setUnivAns(t.univAns);
+    setUrgency(t.urgency);
+    setFormat(t.format);
+    if (t.pricingModel) setPricingModel(t.pricingModel);
+    if (t.riskBuf) setRiskBuf(t.riskBuf);
+    if (t.overhead) setOverhead(t.overhead);
+    setStep(3); // jump to universal — user can verify and continue
+  };
+
 
   const clearHistory = () => {
     setHistory([]);
