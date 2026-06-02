@@ -444,95 +444,208 @@ export default function Calculator() {
 
     // Auto-fetch handled by Tabs onValueChange below
 
-    const exportPdf = () => {
-      const doc = new jsPDF({ unit: "pt", format: "a4" });
-      const pageW = doc.internal.pageSize.getWidth();
-      const pageH = doc.internal.pageSize.getHeight();
-      const margin = 48;
-      let y = margin;
-      const isRu = lang === "ru";
-
-      const ensure = (need: number) => {
-        if (y + need > pageH - margin) { doc.addPage(); y = margin; }
-      };
-      const h1 = (t: string) => {
-        ensure(28);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(20, 30, 60);
-        doc.text(t, margin, y); y += 24;
-      };
-      const h2 = (t: string) => {
-        ensure(22);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
-        doc.text(t, margin, y); y += 16;
-      };
-      const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...color);
-        const lines = doc.splitTextToSize(t, pageW - margin * 2);
-        for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
-      };
-      const kv = (k: string, v: string) => {
-        ensure(14);
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
-        doc.text(k, margin, y);
-        doc.setFont("helvetica", "bold"); doc.setTextColor(20, 30, 60);
-        doc.text(v, pageW - margin, y, { align: "right" });
-        y += 14;
-      };
-
-      h1(isRu ? "Смета консалтингового проекта" : "Consulting Project Estimate");
-      p(`${isRu ? "Дата" : "Date"}: ${new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB")}`, [120,120,130]);
-      y += 6;
-
-      // Hero
-      doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 60, "F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
-      doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 14, y + 18);
-      doc.setFontSize(20); doc.setTextColor(30, 60, 200);
-      doc.text(`${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}`, margin + 14, y + 44);
-      y += 76;
-
-      h2(isRu ? "Параметры" : "Parameters");
-      kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
-      kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
-      kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
-      kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
-      kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
-      kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
-      kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
-      kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
-      kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
-      kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
-      kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
-      y += 8;
-
-      h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
-      tr.phases.forEach((ph, i) => {
-        const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
-        const hrs = Math.round(R.hours * phasesPct[i] / 100);
-        kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
-      });
-      y += 8;
-
-      h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
-      scenarios.forEach(({ label, sc }) => {
-        if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
-      });
-      y += 8;
-
-      if (aiText) {
-        h2(isRu ? "Анализ сметы" : "Estimate analysis");
-        p(aiText);
-        y += 4;
+    // Cached Cyrillic font (PT Sans) for jsPDF
+    const ensureCyrFont = async (doc: jsPDF): Promise<string> => {
+      const FONT_NAME = "PTSans";
+      const w = window as unknown as { __ptsans_b64?: string };
+      try {
+        if (!w.__ptsans_b64) {
+          const res = await fetch(
+            "https://fonts.gstatic.com/s/ptsans/v17/jizaRExUiTo99u79D0KExQ.ttf",
+          );
+          const buf = await res.arrayBuffer();
+          let bin = "";
+          const bytes = new Uint8Array(buf);
+          for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+          w.__ptsans_b64 = btoa(bin);
+        }
+        doc.addFileToVFS(`${FONT_NAME}.ttf`, w.__ptsans_b64);
+        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "normal");
+        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "bold");
+        return FONT_NAME;
+      } catch (e) {
+        console.warn("Failed to load Cyrillic font, falling back to helvetica", e);
+        return "helvetica";
       }
-
-      ensure(40);
-      doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
-      doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(120,120,130);
-      const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
-      for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
-
-      doc.save(`estimate-${Date.now()}.pdf`);
     };
+
+    const exportPdf = async () => {
+      setPdfBusy(true);
+      try {
+        const doc = new jsPDF({ unit: "pt", format: "a4" });
+        const isRu = lang === "ru";
+        const FONT = isRu ? await ensureCyrFont(doc) : "helvetica";
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 48;
+        let y = margin;
+        const NI = NEW_I18N[lang];
+
+        const ensure = (need: number) => {
+          if (y + need > pageH - margin) { doc.addPage(); y = margin; }
+        };
+        const h1 = (t: string) => {
+          ensure(28);
+          doc.setFont(FONT, "bold"); doc.setFontSize(20); doc.setTextColor(20, 30, 60);
+          doc.text(t, margin, y); y += 26;
+        };
+        const h2 = (t: string) => {
+          ensure(22);
+          doc.setFont(FONT, "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
+          doc.text(t, margin, y); y += 16;
+        };
+        const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
+          doc.setFont(FONT, "normal"); doc.setFontSize(10); doc.setTextColor(color[0], color[1], color[2]);
+          const lines = doc.splitTextToSize(t, pageW - margin * 2);
+          for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
+        };
+        const kv = (k: string, v: string) => {
+          ensure(14);
+          doc.setFont(FONT, "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
+          doc.text(k, margin, y);
+          doc.setFont(FONT, "bold"); doc.setTextColor(20, 30, 60);
+          doc.text(v, pageW - margin, y, { align: "right" });
+          y += 14;
+        };
+
+        // ===== Branded header band =====
+        doc.setFillColor(15, 25, 55); doc.rect(0, 0, pageW, 86, "F");
+        doc.setFillColor(80, 130, 240); doc.rect(0, 86, pageW, 3, "F");
+        // Mark / logo
+        doc.setFillColor(80, 130, 240); doc.circle(margin + 12, 38, 12, "F");
+        doc.setFont(FONT, "bold"); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
+        doc.text("CONSULT.CO", margin + 32, 42);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(180, 200, 240);
+        doc.text(isRu ? "Бизнес-анализ · Консалтинг · Экспертиза" : "Business Analysis · Consulting · Expertise", margin + 32, 56);
+        // Right side: doc no + date
+        const docNo = `№ EST-${Date.now().toString().slice(-6)}`;
+        doc.setFont(FONT, "bold"); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
+        doc.text(docNo, pageW - margin, 36, { align: "right" });
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(180, 200, 240);
+        doc.text(new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB"), pageW - margin, 52, { align: "right" });
+        y = 110;
+
+        // ===== Title =====
+        h1(NI.proposalDocTitle);
+
+        // ===== Parties =====
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        const colW = (pageW - margin * 2 - 16) / 2;
+        doc.text(`${NI.proposalFrom}:`, margin, y);
+        doc.text(`${NI.proposalTo}:`, margin + colW + 16, y);
+        doc.setFont(FONT, "bold"); doc.setFontSize(11); doc.setTextColor(20, 30, 60);
+        doc.text("CONSULT.CO", margin, y + 14);
+        doc.text("__________________________", margin + colW + 16, y + 14);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        doc.text(isRu ? "ИП / ООО · contact@consult.co" : "Sole prop. / LLC · contact@consult.co", margin, y + 28);
+        doc.text(isRu ? "Заполняется заказчиком" : "To be filled by client", margin + colW + 16, y + 28);
+        y += 46;
+
+        // ===== Hero price =====
+        doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 70, "F");
+        doc.setDrawColor(80, 130, 240); doc.setLineWidth(2);
+        doc.line(margin, y, margin, y + 70);
+        doc.setLineWidth(0.2);
+        doc.setFont(FONT,"bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
+        doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 18, y + 22);
+        doc.setFontSize(22); doc.setTextColor(30, 60, 200);
+        const totalLine = `${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}${pricingModel === "retainer" ? " /" + (isRu ? "мес" : "mo") : ""}`;
+        doc.text(totalLine, margin + 18, y + 50);
+        y += 86;
+
+        // ===== Parameters =====
+        h2(isRu ? "Параметры" : "Parameters");
+        kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
+        kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
+        kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
+        kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
+        kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
+        kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
+        kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
+        kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
+        kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
+        kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
+        kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
+        y += 8;
+
+        // ===== Team mix (if used) =====
+        if (teamEnabled) {
+          h2(NEW_I18N[lang].teamMix);
+          RESOURCE_ROLES.forEach((role) => {
+            if ((teamShares[role.id] || 0) > 0) {
+              kv(isRu ? role.ru : role.en, `${teamShares[role.id]}% · ${teamRates[role.id]} €/${isRu ? "ч" : "h"}`);
+            }
+          });
+          kv(NEW_I18N[lang].teamBlended, `${Math.round(blendedRate)} €/${isRu ? "ч" : "h"}`);
+          y += 8;
+        }
+
+        // ===== Phase breakdown =====
+        h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
+        tr.phases.forEach((ph, i) => {
+          const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
+          const hrs = Math.round(R.hours * phasesPct[i] / 100);
+          kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
+        });
+        y += 8;
+
+        // ===== Scenarios =====
+        h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
+        scenarios.forEach(({ label, sc }) => {
+          if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
+        });
+        y += 8;
+
+        // ===== Payment terms =====
+        h2(NI.proposalPaymentTerms);
+        p(NI.proposalPaymentTermsText);
+        y += 4;
+
+        // ===== Validity =====
+        const validDate = new Date(Date.now() + 30 * 24 * 3600 * 1000)
+          .toLocaleDateString(isRu ? "ru-RU" : "en-GB");
+        kv(NI.proposalValidUntil, validDate);
+        y += 8;
+
+        // ===== AI analysis =====
+        if (aiText) {
+          h2(isRu ? "Анализ сметы" : "Estimate analysis");
+          p(aiText);
+          y += 4;
+        }
+
+        // ===== Disclaimer =====
+        ensure(40);
+        doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
+        doc.setFont(FONT,"normal"); doc.setFontSize(9); doc.setTextColor(120,120,130);
+        const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
+        for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
+        y += 16;
+
+        // ===== Signature lines =====
+        ensure(70);
+        const sigW = (pageW - margin * 2 - 24) / 2;
+        doc.setDrawColor(160, 160, 170); doc.setLineWidth(0.5);
+        doc.line(margin, y + 30, margin + sigW, y + 30);
+        doc.line(margin + sigW + 24, y + 30, pageW - margin, y + 30);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        doc.text(`${NI.proposalSignature} — ${NI.proposalContractor}`, margin, y + 44);
+        doc.text(`${NI.proposalSignature} — ${NI.proposalCompany}`, margin + sigW + 24, y + 44);
+
+        // ===== Footer on each page =====
+        const total = doc.getNumberOfPages();
+        for (let i = 1; i <= total; i++) {
+          doc.setPage(i);
+          doc.setFont(FONT, "normal"); doc.setFontSize(8); doc.setTextColor(150, 150, 160);
+          doc.text(`${docNo} · ${isRu ? "стр." : "page"} ${i}/${total}`, pageW / 2, pageH - 20, { align: "center" });
+        }
+
+        doc.save(`proposal-${docNo.replace(/[^\w-]/g, "")}.pdf`);
+      } finally {
+        setPdfBusy(false);
+      }
+    };
+
 
     const analysis = aiText || buildLocalAnalysis();
 
