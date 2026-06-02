@@ -768,6 +768,99 @@ export default function Calculator() {
               })()}
             </TabsContent>
 
+            {/* BUDGET — target slider + matching scenarios */}
+            <TabsContent value="budget" className="p-5 sm:p-8 mt-0">
+              <SectionTitle>{NEW_I18N[lang].budget}</SectionTitle>
+              <div className="mb-5">
+                <label className="text-xs sm:text-sm font-semibold text-foreground mb-2 block">
+                  {NEW_I18N[lang].budgetTarget}:{" "}
+                  <span className="text-primary-glow">{budgetTarget.toLocaleString()} {R.sym}</span>
+                </label>
+                <Slider
+                  value={[budgetTarget]}
+                  min={500}
+                  max={Math.max(50000, R.cMax * 2)}
+                  step={250}
+                  onValueChange={(v) => setBudgetTarget(v[0])}
+                />
+              </div>
+              {(() => {
+                // Generate combinations
+                const combos: { label: string; mid: number; cMin: number; cMax: number; meta: string }[] = [];
+                URGENCY_DATA.forEach((u) => {
+                  FORMAT_DATA.forEach((f) => {
+                    PRICING_MODELS.forEach((pm) => {
+                      // Manual recompute (lightweight, mirror calcCore essentials)
+                      const wt = WORK_TYPES.find((x) => x.id === wtId!)!;
+                      const baseH = (wt.baseHours.S + wt.baseHours.M + wt.baseHours.L + wt.baseHours.XL) / 4;
+                      let m = 1;
+                      [...wtCrit!.volume, ...wtCrit!.complexity, ...UNIVERSAL].forEach((c: Criterion) => {
+                        const ans = volumeAns[c.id] || complexAns[c.id] || univAns[c.id];
+                        const opt = c.options.find((o) => o.id === ans);
+                        if (opt) m *= opt.mult;
+                      });
+                      m *= u.mult * f.mult;
+                      const clientM = clientNew === "returning" ? 0.9 : 1.0;
+                      const indM = industryExp === "known" ? 1.0 : industryExp === "partial" ? 1.15 : 1.3;
+                      m *= clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100) * pm.mult;
+                      const hours = Math.max(1, Math.round(baseH * m));
+                      const rateBase = wt.baseRate * u.mult;
+                      const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
+                      const rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+                      const exch = R.sym === "€" ? 1 : tr.currencies.find((c) => c.sym === R.sym)!.rate;
+                      const cMin = Math.round(hours * rMin * 0.9 * exch);
+                      const cMax = Math.round(hours * rMax * 1.1 * exch);
+                      combos.push({
+                        label: `${lang === "ru" ? u.ru : u.en} · ${lang === "ru" ? f.ru : f.en} · ${lang === "ru" ? pm.ru : pm.en}`,
+                        mid: Math.round((cMin + cMax) / 2),
+                        cMin, cMax,
+                        meta: `${hours}${lang === "ru" ? "ч" : "h"} · ×${m.toFixed(2)}`,
+                      });
+                    });
+                  });
+                });
+                // Sort by distance to target
+                const sorted = combos
+                  .map((c) => ({ ...c, dist: Math.abs(c.mid - budgetTarget) }))
+                  .sort((a, b) => a.dist - b.dist)
+                  .slice(0, 6);
+                const inRange = sorted.filter((c) => c.cMin <= budgetTarget && c.cMax >= budgetTarget);
+                const list = inRange.length > 0 ? inRange : sorted;
+                return (
+                  <>
+                    <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground mb-3">
+                      {inRange.length > 0 ? NEW_I18N[lang].budgetMatches : NEW_I18N[lang].budgetNoMatch}
+                    </div>
+                    <ul className="space-y-2">
+                      {list.map((c, i) => {
+                        const inside = c.cMin <= budgetTarget && c.cMax >= budgetTarget;
+                        return (
+                          <li
+                            key={i}
+                            className={cn(
+                              "p-3 rounded-xl border bg-surface-hi flex justify-between items-center gap-3 text-xs sm:text-sm",
+                              inside ? "border-success/50" : "border-border/50",
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-semibold text-foreground truncate">{c.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{c.meta}</div>
+                            </div>
+                            <div className="text-right tabular-nums whitespace-nowrap">
+                              <div className={cn("font-bold", inside ? "text-success" : "text-foreground")}>
+                                {c.cMin.toLocaleString()}–{c.cMax.toLocaleString()} {R.sym}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                );
+              })()}
+            </TabsContent>
+
+
             <TabsContent value="history" className="p-5 sm:p-8 mt-0">
               <div className="flex items-center justify-between mb-4">
                 <SectionTitle className="mb-0">{tr.history}</SectionTitle>
