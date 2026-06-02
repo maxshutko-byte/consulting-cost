@@ -6,6 +6,8 @@ import {
   URGENCY_DATA,
   FORMAT_DATA,
   PRICING_MODELS,
+  RESOURCE_ROLES,
+  PROJECT_TEMPLATES,
   I18N,
   WORK_TYPE_DETAILS,
   DETAILS_I18N,
@@ -13,16 +15,73 @@ import {
   type Currency,
   type Criterion,
   type PricingModelId,
+  type ProjectTemplate,
 } from "@/lib/calculator-data";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
 import jsPDF from "jspdf";
+
+/* ============ Extra i18n (additive) ============ */
+const NEW_I18N = {
+  ru: {
+    templates: "Готовые шаблоны",
+    templatesHelp: "Один клик заполнит все шаги типовыми параметрами",
+    teamMix: "Состав команды",
+    teamMixHelp: "Включите, чтобы рассчитать смету через роли × ставки × доли часов",
+    teamEnable: "Использовать состав команды",
+    teamRole: "Роль", teamRate: "€/ч", teamShare: "Доля часов",
+    teamBlended: "Смешанная ставка",
+    teamSumWarn: "Сумма долей должна быть 100%",
+    waterfall: "Состав цены",
+    waterfallHelp: "Как базовая цена превращается в итоговую",
+    budget: "Бюджет",
+    budgetTarget: "Целевой бюджет",
+    budgetMatches: "Подходящие сценарии",
+    budgetNoMatch: "Под этот бюджет — варианты дороже/дешевле:",
+    proposalTo: "Кому", proposalFrom: "От",
+    proposalValidUntil: "Предложение действует до",
+    proposalPaymentTerms: "Условия оплаты",
+    proposalPaymentTermsText: "50% предоплата · 50% по факту приёмки. Безналичный расчёт, оплата в течение 5 рабочих дней.",
+    proposalSignature: "Подпись",
+    proposalCompany: "Компания",
+    proposalContractor: "Исполнитель",
+    proposalDocTitle: "Коммерческое предложение",
+    proposalLoadingFont: "Загрузка шрифта для PDF…",
+  },
+  en: {
+    templates: "Project templates",
+    templatesHelp: "One click fills all steps with typical parameters",
+    teamMix: "Team composition",
+    teamMixHelp: "Enable to estimate via roles × rates × hour shares",
+    teamEnable: "Use team composition",
+    teamRole: "Role", teamRate: "€/h", teamShare: "Hours share",
+    teamBlended: "Blended rate",
+    teamSumWarn: "Shares must sum to 100%",
+    waterfall: "Price waterfall",
+    waterfallHelp: "How the base cost turns into the final price",
+    budget: "Budget",
+    budgetTarget: "Target budget",
+    budgetMatches: "Matching scenarios",
+    budgetNoMatch: "No exact match — closest options above/below:",
+    proposalTo: "To", proposalFrom: "From",
+    proposalValidUntil: "Proposal valid until",
+    proposalPaymentTerms: "Payment terms",
+    proposalPaymentTermsText: "50% upfront · 50% upon acceptance. Bank transfer, payable within 5 business days.",
+    proposalSignature: "Signature",
+    proposalCompany: "Company",
+    proposalContractor: "Contractor",
+    proposalDocTitle: "Commercial Proposal",
+    proposalLoadingFont: "Loading PDF font…",
+  },
+} as const;
+
 
 function DetailSection({ title, items }: { title: string; items: string[] }) {
   return (
@@ -129,6 +188,21 @@ export default function Calculator() {
   const [customRateMax, setCustomRateMax] = useState(95);
   const [pricingModel, setPricingModel] = useState<PricingModelId>("tm");
 
+  // Team mix (roles × rates × shares)
+  const [teamEnabled, setTeamEnabled] = useState(false);
+  const [teamRates, setTeamRates] = useState<Record<string, number>>(
+    () => Object.fromEntries(RESOURCE_ROLES.map((r) => [r.id, r.rate])),
+  );
+  const [teamShares, setTeamShares] = useState<Record<string, number>>(
+    () => Object.fromEntries(RESOURCE_ROLES.map((r) => [r.id, r.defaultShare])),
+  );
+
+  // Budget slider (target, in selected currency)
+  const [budgetTarget, setBudgetTarget] = useState(3000);
+  // PDF font loading state
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+
   const [done, setDone] = useState(false);
   const [activeTab, setActiveTab] = useState("summary");
   const [copied, setCopied] = useState(false);
@@ -178,6 +252,19 @@ export default function Calculator() {
     setter((prev) => ({ ...prev, [id]: val }));
   }
 
+  // Blended rate from team mix (when enabled)
+  const blendedRate = useMemo(() => {
+    const sumShare = RESOURCE_ROLES.reduce((s, r) => s + (teamShares[r.id] || 0), 0) || 1;
+    return RESOURCE_ROLES.reduce(
+      (acc, r) => acc + ((teamShares[r.id] || 0) / sumShare) * (teamRates[r.id] || 0),
+      0,
+    );
+  }, [teamRates, teamShares]);
+  const teamSharesSum = useMemo(
+    () => RESOURCE_ROLES.reduce((s, r) => s + (teamShares[r.id] || 0), 0),
+    [teamShares],
+  );
+
   const calcCore = useMemo(
     () => (urgMultOverride: number | null = null, opts: { overhead?: number; risk?: number } = {}) => {
       if (!wtId || !wtCrit || !urgency || !format) return null;
@@ -202,9 +289,16 @@ export default function Calculator() {
       const pm = PRICING_MODELS.find((p) => p.id === pricingModel)!;
       m *= pm.mult;
       const hours = Math.max(1, Math.round(baseH * m));
-      const rateBase = wt.baseRate * uMult;
-      const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
-      const rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+      // Rate: team blended (if enabled) overrides custom rate range
+      let rMin: number, rMax: number;
+      if (teamEnabled && blendedRate > 0) {
+        rMin = Math.round(blendedRate * 0.95);
+        rMax = Math.round(blendedRate * 1.05);
+      } else {
+        const rateBase = wt.baseRate * uMult;
+        rMin = Math.max(customRateMin, Math.round(rateBase - 5));
+        rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+      }
       const cur = tr.currencies.find((c) => c.id === currency)!;
       const exch = cur.rate;
       const hMin = Math.max(1, Math.round(hours * 0.85));
@@ -216,14 +310,15 @@ export default function Calculator() {
         cMin = Math.round(minLocal);
         cMax = Math.round(minLocal * 1.2);
       }
-      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm };
+      return { wt, urgEntry, fmtEntry, hours, hMin, hMax, rMin, rMax, cMin, cMax, m, sym: cur.sym, pm, baseH };
     },
     [
       wtId, wtCrit, urgency, format, volumeAns, complexAns, univAns,
       clientNew, industryExp, overhead, riskBuf, customRateMin, customRateMax,
-      currency, minThreshold, tr, pricingModel,
+      currency, minThreshold, tr, pricingModel, teamEnabled, blendedRate,
     ],
   );
+
 
   const R = calcCore();
 
@@ -249,7 +344,22 @@ export default function Calculator() {
     setStep(0); setWtId(null); setVolumeAns({}); setComplexAns({}); setUnivAns({});
     setUrgency(null); setFormat(null); setDone(false); setActiveTab("summary"); setCopied(false);
     setAiText(""); setAiError(false); setAiLoading(false);
+    setTeamEnabled(false);
   };
+
+  const applyTemplate = (t: ProjectTemplate) => {
+    setWtId(t.wtId);
+    setVolumeAns(t.volumeAns);
+    setComplexAns(t.complexAns);
+    setUnivAns(t.univAns);
+    setUrgency(t.urgency);
+    setFormat(t.format);
+    if (t.pricingModel) setPricingModel(t.pricingModel);
+    if (t.riskBuf) setRiskBuf(t.riskBuf);
+    if (t.overhead) setOverhead(t.overhead);
+    setStep(3); // jump to universal — user can verify and continue
+  };
+
 
   const clearHistory = () => {
     setHistory([]);
@@ -334,95 +444,208 @@ export default function Calculator() {
 
     // Auto-fetch handled by Tabs onValueChange below
 
-    const exportPdf = () => {
-      const doc = new jsPDF({ unit: "pt", format: "a4" });
-      const pageW = doc.internal.pageSize.getWidth();
-      const pageH = doc.internal.pageSize.getHeight();
-      const margin = 48;
-      let y = margin;
-      const isRu = lang === "ru";
-
-      const ensure = (need: number) => {
-        if (y + need > pageH - margin) { doc.addPage(); y = margin; }
-      };
-      const h1 = (t: string) => {
-        ensure(28);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(20, 30, 60);
-        doc.text(t, margin, y); y += 24;
-      };
-      const h2 = (t: string) => {
-        ensure(22);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
-        doc.text(t, margin, y); y += 16;
-      };
-      const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...color);
-        const lines = doc.splitTextToSize(t, pageW - margin * 2);
-        for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
-      };
-      const kv = (k: string, v: string) => {
-        ensure(14);
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
-        doc.text(k, margin, y);
-        doc.setFont("helvetica", "bold"); doc.setTextColor(20, 30, 60);
-        doc.text(v, pageW - margin, y, { align: "right" });
-        y += 14;
-      };
-
-      h1(isRu ? "Смета консалтингового проекта" : "Consulting Project Estimate");
-      p(`${isRu ? "Дата" : "Date"}: ${new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB")}`, [120,120,130]);
-      y += 6;
-
-      // Hero
-      doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 60, "F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
-      doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 14, y + 18);
-      doc.setFontSize(20); doc.setTextColor(30, 60, 200);
-      doc.text(`${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}`, margin + 14, y + 44);
-      y += 76;
-
-      h2(isRu ? "Параметры" : "Parameters");
-      kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
-      kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
-      kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
-      kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
-      kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
-      kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
-      kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
-      kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
-      kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
-      kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
-      kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
-      y += 8;
-
-      h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
-      tr.phases.forEach((ph, i) => {
-        const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
-        const hrs = Math.round(R.hours * phasesPct[i] / 100);
-        kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
-      });
-      y += 8;
-
-      h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
-      scenarios.forEach(({ label, sc }) => {
-        if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
-      });
-      y += 8;
-
-      if (aiText) {
-        h2(isRu ? "Анализ сметы" : "Estimate analysis");
-        p(aiText);
-        y += 4;
+    // Cached Cyrillic font (PT Sans) for jsPDF
+    const ensureCyrFont = async (doc: jsPDF): Promise<string> => {
+      const FONT_NAME = "PTSans";
+      const w = window as unknown as { __ptsans_b64?: string };
+      try {
+        if (!w.__ptsans_b64) {
+          const res = await fetch(
+            "https://fonts.gstatic.com/s/ptsans/v17/jizaRExUiTo99u79D0KExQ.ttf",
+          );
+          const buf = await res.arrayBuffer();
+          let bin = "";
+          const bytes = new Uint8Array(buf);
+          for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+          w.__ptsans_b64 = btoa(bin);
+        }
+        doc.addFileToVFS(`${FONT_NAME}.ttf`, w.__ptsans_b64);
+        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "normal");
+        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "bold");
+        return FONT_NAME;
+      } catch (e) {
+        console.warn("Failed to load Cyrillic font, falling back to helvetica", e);
+        return "helvetica";
       }
-
-      ensure(40);
-      doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
-      doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(120,120,130);
-      const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
-      for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
-
-      doc.save(`estimate-${Date.now()}.pdf`);
     };
+
+    const exportPdf = async () => {
+      setPdfBusy(true);
+      try {
+        const doc = new jsPDF({ unit: "pt", format: "a4" });
+        const isRu = lang === "ru";
+        const FONT = isRu ? await ensureCyrFont(doc) : "helvetica";
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 48;
+        let y = margin;
+        const NI = NEW_I18N[lang];
+
+        const ensure = (need: number) => {
+          if (y + need > pageH - margin) { doc.addPage(); y = margin; }
+        };
+        const h1 = (t: string) => {
+          ensure(28);
+          doc.setFont(FONT, "bold"); doc.setFontSize(20); doc.setTextColor(20, 30, 60);
+          doc.text(t, margin, y); y += 26;
+        };
+        const h2 = (t: string) => {
+          ensure(22);
+          doc.setFont(FONT, "bold"); doc.setFontSize(12); doc.setTextColor(40, 60, 110);
+          doc.text(t, margin, y); y += 16;
+        };
+        const p = (t: string, color: [number, number, number] = [40, 40, 40]) => {
+          doc.setFont(FONT, "normal"); doc.setFontSize(10); doc.setTextColor(color[0], color[1], color[2]);
+          const lines = doc.splitTextToSize(t, pageW - margin * 2);
+          for (const ln of lines) { ensure(14); doc.text(ln, margin, y); y += 14; }
+        };
+        const kv = (k: string, v: string) => {
+          ensure(14);
+          doc.setFont(FONT, "normal"); doc.setFontSize(10); doc.setTextColor(110, 110, 120);
+          doc.text(k, margin, y);
+          doc.setFont(FONT, "bold"); doc.setTextColor(20, 30, 60);
+          doc.text(v, pageW - margin, y, { align: "right" });
+          y += 14;
+        };
+
+        // ===== Branded header band =====
+        doc.setFillColor(15, 25, 55); doc.rect(0, 0, pageW, 86, "F");
+        doc.setFillColor(80, 130, 240); doc.rect(0, 86, pageW, 3, "F");
+        // Mark / logo
+        doc.setFillColor(80, 130, 240); doc.circle(margin + 12, 38, 12, "F");
+        doc.setFont(FONT, "bold"); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
+        doc.text("CONSULT.CO", margin + 32, 42);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(180, 200, 240);
+        doc.text(isRu ? "Бизнес-анализ · Консалтинг · Экспертиза" : "Business Analysis · Consulting · Expertise", margin + 32, 56);
+        // Right side: doc no + date
+        const docNo = `№ EST-${Date.now().toString().slice(-6)}`;
+        doc.setFont(FONT, "bold"); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
+        doc.text(docNo, pageW - margin, 36, { align: "right" });
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(180, 200, 240);
+        doc.text(new Date().toLocaleDateString(isRu ? "ru-RU" : "en-GB"), pageW - margin, 52, { align: "right" });
+        y = 110;
+
+        // ===== Title =====
+        h1(NI.proposalDocTitle);
+
+        // ===== Parties =====
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        const colW = (pageW - margin * 2 - 16) / 2;
+        doc.text(`${NI.proposalFrom}:`, margin, y);
+        doc.text(`${NI.proposalTo}:`, margin + colW + 16, y);
+        doc.setFont(FONT, "bold"); doc.setFontSize(11); doc.setTextColor(20, 30, 60);
+        doc.text("CONSULT.CO", margin, y + 14);
+        doc.text("__________________________", margin + colW + 16, y + 14);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        doc.text(isRu ? "ИП / ООО · contact@consult.co" : "Sole prop. / LLC · contact@consult.co", margin, y + 28);
+        doc.text(isRu ? "Заполняется заказчиком" : "To be filled by client", margin + colW + 16, y + 28);
+        y += 46;
+
+        // ===== Hero price =====
+        doc.setFillColor(245, 247, 252); doc.rect(margin, y, pageW - margin*2, 70, "F");
+        doc.setDrawColor(80, 130, 240); doc.setLineWidth(2);
+        doc.line(margin, y, margin, y + 70);
+        doc.setLineWidth(0.2);
+        doc.setFont(FONT,"bold"); doc.setFontSize(9); doc.setTextColor(80,90,120);
+        doc.text((isRu ? "ИТОГОВАЯ СТОИМОСТЬ" : "TOTAL COST"), margin + 18, y + 22);
+        doc.setFontSize(22); doc.setTextColor(30, 60, 200);
+        const totalLine = `${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}${pricingModel === "retainer" ? " /" + (isRu ? "мес" : "mo") : ""}`;
+        doc.text(totalLine, margin + 18, y + 50);
+        y += 86;
+
+        // ===== Parameters =====
+        h2(isRu ? "Параметры" : "Parameters");
+        kv(isRu ? "Тип работы" : "Work type", isRu ? R.wt.ru : R.wt.en);
+        kv(isRu ? "Модель ценообразования" : "Pricing model", isRu ? R.pm.ru : R.pm.en);
+        kv(isRu ? "Срочность" : "Urgency", `${isRu ? R.urgEntry.ru : R.urgEntry.en} (×${R.urgEntry.mult})`);
+        kv(isRu ? "Формат" : "Format", isRu ? R.fmtEntry.ru : R.fmtEntry.en);
+        kv(isRu ? "Трудоёмкость" : "Effort", `${R.hMin}–${R.hMax} ${isRu ? "ч" : "h"}`);
+        kv(isRu ? "Ставка" : "Rate", `${R.rMin}–${R.rMax} €/${isRu ? "час" : "hr"}`);
+        kv(isRu ? "Коэффициент" : "Multiplier", `×${R.m.toFixed(2)}`);
+        kv(isRu ? "Риск-буфер" : "Risk buffer", `+${riskBuf}%`);
+        kv(isRu ? "Накладные" : "Overhead", `+${overhead}%`);
+        kv(isRu ? "Клиент" : "Client", clientNew === "returning" ? (isRu ? "Постоянный (-10%)" : "Returning (-10%)") : (isRu ? "Новый" : "New"));
+        kv(isRu ? "Отрасль" : "Industry", industryExp === "known" ? (isRu ? "Знакомая" : "Known") : industryExp === "partial" ? (isRu ? "Частично" : "Partial") : (isRu ? "Новая (+30%)" : "New (+30%)"));
+        y += 8;
+
+        // ===== Team mix (if used) =====
+        if (teamEnabled) {
+          h2(NEW_I18N[lang].teamMix);
+          RESOURCE_ROLES.forEach((role) => {
+            if ((teamShares[role.id] || 0) > 0) {
+              kv(isRu ? role.ru : role.en, `${teamShares[role.id]}% · ${teamRates[role.id]} €/${isRu ? "ч" : "h"}`);
+            }
+          });
+          kv(NEW_I18N[lang].teamBlended, `${Math.round(blendedRate)} €/${isRu ? "ч" : "h"}`);
+          y += 8;
+        }
+
+        // ===== Phase breakdown =====
+        h2(isRu ? "Разбивка по фазам" : "Phase breakdown");
+        tr.phases.forEach((ph, i) => {
+          const amt = Math.round(((R.cMin + R.cMax) / 2) * phasesPct[i] / 100);
+          const hrs = Math.round(R.hours * phasesPct[i] / 100);
+          kv(`${ph}`, `${hrs}${isRu ? "ч" : "h"} · ~${amt.toLocaleString()} ${R.sym} (${phasesPct[i]}%)`);
+        });
+        y += 8;
+
+        // ===== Scenarios =====
+        h2(isRu ? "Сравнение сценариев" : "Scenario comparison");
+        scenarios.forEach(({ label, sc }) => {
+          if (sc) kv(label, `${sc.cMin.toLocaleString()}–${sc.cMax.toLocaleString()} ${sc.sym}`);
+        });
+        y += 8;
+
+        // ===== Payment terms =====
+        h2(NI.proposalPaymentTerms);
+        p(NI.proposalPaymentTermsText);
+        y += 4;
+
+        // ===== Validity =====
+        const validDate = new Date(Date.now() + 30 * 24 * 3600 * 1000)
+          .toLocaleDateString(isRu ? "ru-RU" : "en-GB");
+        kv(NI.proposalValidUntil, validDate);
+        y += 8;
+
+        // ===== AI analysis =====
+        if (aiText) {
+          h2(isRu ? "Анализ сметы" : "Estimate analysis");
+          p(aiText);
+          y += 4;
+        }
+
+        // ===== Disclaimer =====
+        ensure(40);
+        doc.setDrawColor(220,220,230); doc.line(margin, y, pageW - margin, y); y += 12;
+        doc.setFont(FONT,"normal"); doc.setFontSize(9); doc.setTextColor(120,120,130);
+        const disc = doc.splitTextToSize(tr.disclaimer, pageW - margin * 2);
+        for (const ln of disc) { ensure(12); doc.text(ln, margin, y); y += 12; }
+        y += 16;
+
+        // ===== Signature lines =====
+        ensure(70);
+        const sigW = (pageW - margin * 2 - 24) / 2;
+        doc.setDrawColor(160, 160, 170); doc.setLineWidth(0.5);
+        doc.line(margin, y + 30, margin + sigW, y + 30);
+        doc.line(margin + sigW + 24, y + 30, pageW - margin, y + 30);
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); doc.setTextColor(110, 110, 120);
+        doc.text(`${NI.proposalSignature} — ${NI.proposalContractor}`, margin, y + 44);
+        doc.text(`${NI.proposalSignature} — ${NI.proposalCompany}`, margin + sigW + 24, y + 44);
+
+        // ===== Footer on each page =====
+        const total = doc.getNumberOfPages();
+        for (let i = 1; i <= total; i++) {
+          doc.setPage(i);
+          doc.setFont(FONT, "normal"); doc.setFontSize(8); doc.setTextColor(150, 150, 160);
+          doc.text(`${docNo} · ${isRu ? "стр." : "page"} ${i}/${total}`, pageW / 2, pageH - 20, { align: "center" });
+        }
+
+        doc.save(`proposal-${docNo.replace(/[^\w-]/g, "")}.pdf`);
+      } finally {
+        setPdfBusy(false);
+      }
+    };
+
 
     const analysis = aiText || buildLocalAnalysis();
 
@@ -481,11 +704,14 @@ export default function Calculator() {
               {[
                 { id: "summary", label: lang === "ru" ? "Итог" : "Summary" },
                 { id: "phases", label: lang === "ru" ? "Фазы" : "Phases" },
+                { id: "waterfall", label: NEW_I18N[lang].waterfall },
                 { id: "scenarios", label: lang === "ru" ? "Сценарии" : "Scenarios" },
+                { id: "budget", label: NEW_I18N[lang].budget },
                 { id: "history", label: lang === "ru" ? "История" : "History" },
                 { id: "card", label: lang === "ru" ? "КП" : "Proposal" },
                 { id: "ai", label: lang === "ru" ? "Анализ" : "Analysis" },
               ].map((t) => (
+
                 <TabsTrigger
                   key={t.id}
                   value={t.id}
@@ -588,7 +814,166 @@ export default function Calculator() {
               </div>
             </TabsContent>
 
-            {/* HISTORY */}
+            {/* WATERFALL — price composition */}
+            <TabsContent value="waterfall" className="p-5 sm:p-8 mt-0">
+              <SectionTitle>{NEW_I18N[lang].waterfall}</SectionTitle>
+              <div className="text-xs text-muted-foreground mb-4">{NEW_I18N[lang].waterfallHelp}</div>
+              {(() => {
+                const cur = tr.currencies.find((c) => c.id === currency)!;
+                const exch = cur.rate;
+                const baseRateMid = (R.rMin + R.rMax) / 2;
+                const base = Math.round(R.baseH * baseRateMid * exch);
+                const finalMid = Math.round((R.cMin + R.cMax) / 2);
+                const fmt = FORMAT_DATA.find((f) => f.id === format)!;
+                let scopeM = 1;
+                [...wtCrit!.volume, ...wtCrit!.complexity, ...UNIVERSAL].forEach((c: Criterion) => {
+                  const ans = volumeAns[c.id] || complexAns[c.id] || univAns[c.id];
+                  const opt = c.options.find((o) => o.id === ans);
+                  if (opt) scopeM *= opt.mult;
+                });
+                const indM = industryExp === "known" ? 1.0 : industryExp === "partial" ? 1.15 : 1.3;
+                const clientM = clientNew === "returning" ? 0.9 : 1.0;
+                const steps = [
+                  { label: lang === "ru" ? "Базовая трудоёмкость × ставка" : "Base hours × rate", val: base, delta: base, tone: "primary" },
+                  { label: lang === "ru" ? `Объём + сложность (×${scopeM.toFixed(2)})` : `Scope + complexity (×${scopeM.toFixed(2)})`, val: Math.round(base * scopeM), delta: Math.round(base * scopeM - base), tone: "info" },
+                  { label: lang === "ru" ? `Срочность (×${R.urgEntry.mult})` : `Urgency (×${R.urgEntry.mult})`, val: Math.round(base * scopeM * R.urgEntry.mult), delta: Math.round(base * scopeM * (R.urgEntry.mult - 1)), tone: R.urgEntry.mult > 1 ? "warning" : "info" },
+                  { label: lang === "ru" ? `Формат (×${fmt.mult})` : `Format (×${fmt.mult})`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult), delta: Math.round(base * scopeM * R.urgEntry.mult * (fmt.mult - 1)), tone: fmt.mult >= 1 ? "info" : "success" },
+                  { label: lang === "ru" ? `Клиент × отрасль (×${(clientM * indM).toFixed(2)})` : `Client × industry (×${(clientM * indM).toFixed(2)})`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * (clientM * indM - 1)), tone: "info" },
+                  { label: lang === "ru" ? `Накладные +${overhead}%` : `Overhead +${overhead}%`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100)), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (parseInt(overhead) / 100)), tone: "warning" },
+                  { label: lang === "ru" ? `Риск-буфер +${riskBuf}%` : `Risk buffer +${riskBuf}%`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100)), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (parseInt(riskBuf) / 100)), tone: "warning" },
+                  { label: lang === "ru" ? `Модель: ${R.pm.ru} (×${R.pm.mult})` : `Model: ${R.pm.en} (×${R.pm.mult})`, val: finalMid, delta: Math.round(finalMid - base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100)), tone: R.pm.mult >= 1 ? "warning" : "success" },
+                ];
+                const maxVal = Math.max(...steps.map((s) => s.val));
+                return (
+                  <div className="space-y-2">
+                    {steps.map((s, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_auto] gap-3 items-center">
+                        <div>
+                          <div className="text-xs text-foreground mb-1">{s.label}</div>
+                          <div className="h-2 bg-surface-hi rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                s.tone === "primary" && "bg-primary",
+                                s.tone === "info" && "bg-info",
+                                s.tone === "warning" && "bg-warning",
+                                s.tone === "success" && "bg-success",
+                              )}
+                              style={{ width: `${(s.val / maxVal) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-right tabular-nums text-xs">
+                          <div className="font-bold text-foreground">{s.val.toLocaleString()} {R.sym}</div>
+                          {i > 0 && (
+                            <div className={cn(
+                              "text-[10px]",
+                              s.delta > 0 ? "text-warning" : s.delta < 0 ? "text-success" : "text-muted-foreground",
+                            )}>
+                              {s.delta > 0 ? "+" : ""}{s.delta.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </TabsContent>
+
+            {/* BUDGET — target slider + matching scenarios */}
+            <TabsContent value="budget" className="p-5 sm:p-8 mt-0">
+              <SectionTitle>{NEW_I18N[lang].budget}</SectionTitle>
+              <div className="mb-5">
+                <label className="text-xs sm:text-sm font-semibold text-foreground mb-2 block">
+                  {NEW_I18N[lang].budgetTarget}:{" "}
+                  <span className="text-primary-glow">{budgetTarget.toLocaleString()} {R.sym}</span>
+                </label>
+                <Slider
+                  value={[budgetTarget]}
+                  min={500}
+                  max={Math.max(50000, R.cMax * 2)}
+                  step={250}
+                  onValueChange={(v) => setBudgetTarget(v[0])}
+                />
+              </div>
+              {(() => {
+                // Generate combinations
+                const combos: { label: string; mid: number; cMin: number; cMax: number; meta: string }[] = [];
+                URGENCY_DATA.forEach((u) => {
+                  FORMAT_DATA.forEach((f) => {
+                    PRICING_MODELS.forEach((pm) => {
+                      // Manual recompute (lightweight, mirror calcCore essentials)
+                      const wt = WORK_TYPES.find((x) => x.id === wtId!)!;
+                      const baseH = (wt.baseHours.S + wt.baseHours.M + wt.baseHours.L + wt.baseHours.XL) / 4;
+                      let m = 1;
+                      [...wtCrit!.volume, ...wtCrit!.complexity, ...UNIVERSAL].forEach((c: Criterion) => {
+                        const ans = volumeAns[c.id] || complexAns[c.id] || univAns[c.id];
+                        const opt = c.options.find((o) => o.id === ans);
+                        if (opt) m *= opt.mult;
+                      });
+                      m *= u.mult * f.mult;
+                      const clientM = clientNew === "returning" ? 0.9 : 1.0;
+                      const indM = industryExp === "known" ? 1.0 : industryExp === "partial" ? 1.15 : 1.3;
+                      m *= clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100) * pm.mult;
+                      const hours = Math.max(1, Math.round(baseH * m));
+                      const rateBase = wt.baseRate * u.mult;
+                      const rMin = Math.max(customRateMin, Math.round(rateBase - 5));
+                      const rMax = Math.min(customRateMax, Math.round(rateBase + 5));
+                      const exch = R.sym === "€" ? 1 : tr.currencies.find((c) => c.sym === R.sym)!.rate;
+                      const cMin = Math.round(hours * rMin * 0.9 * exch);
+                      const cMax = Math.round(hours * rMax * 1.1 * exch);
+                      combos.push({
+                        label: `${lang === "ru" ? u.ru : u.en} · ${lang === "ru" ? f.ru : f.en} · ${lang === "ru" ? pm.ru : pm.en}`,
+                        mid: Math.round((cMin + cMax) / 2),
+                        cMin, cMax,
+                        meta: `${hours}${lang === "ru" ? "ч" : "h"} · ×${m.toFixed(2)}`,
+                      });
+                    });
+                  });
+                });
+                // Sort by distance to target
+                const sorted = combos
+                  .map((c) => ({ ...c, dist: Math.abs(c.mid - budgetTarget) }))
+                  .sort((a, b) => a.dist - b.dist)
+                  .slice(0, 6);
+                const inRange = sorted.filter((c) => c.cMin <= budgetTarget && c.cMax >= budgetTarget);
+                const list = inRange.length > 0 ? inRange : sorted;
+                return (
+                  <>
+                    <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground mb-3">
+                      {inRange.length > 0 ? NEW_I18N[lang].budgetMatches : NEW_I18N[lang].budgetNoMatch}
+                    </div>
+                    <ul className="space-y-2">
+                      {list.map((c, i) => {
+                        const inside = c.cMin <= budgetTarget && c.cMax >= budgetTarget;
+                        return (
+                          <li
+                            key={i}
+                            className={cn(
+                              "p-3 rounded-xl border bg-surface-hi flex justify-between items-center gap-3 text-xs sm:text-sm",
+                              inside ? "border-success/50" : "border-border/50",
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-semibold text-foreground truncate">{c.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{c.meta}</div>
+                            </div>
+                            <div className="text-right tabular-nums whitespace-nowrap">
+                              <div className={cn("font-bold", inside ? "text-success" : "text-foreground")}>
+                                {c.cMin.toLocaleString()}–{c.cMax.toLocaleString()} {R.sym}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                );
+              })()}
+            </TabsContent>
+
+
             <TabsContent value="history" className="p-5 sm:p-8 mt-0">
               <div className="flex items-center justify-between mb-4">
                 <SectionTitle className="mb-0">{tr.history}</SectionTitle>
@@ -694,9 +1079,10 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
           </Tabs>
 
           <div className="px-5 sm:px-8 pb-6 space-y-2">
-            <Button onClick={exportPdf} className="w-full mt-2 shadow-glow">
-              ⬇ {tr.exportPdf}
+            <Button onClick={exportPdf} disabled={pdfBusy} className="w-full mt-2 shadow-glow">
+              {pdfBusy ? NEW_I18N[lang].proposalLoadingFont : `⬇ ${tr.exportPdf}`}
             </Button>
+
             <Button onClick={reset} variant="outline" className="w-full">
               {tr.recalculate}
             </Button>
@@ -743,7 +1129,42 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
 
         {/* STEP 0 — work type */}
         {step === 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="space-y-5">
+            {/* Templates */}
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
+                {NEW_I18N[lang].templates}
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-3">{NEW_I18N[lang].templatesHelp}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PROJECT_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base text-primary-glow">{t.icon}</span>
+                      <span className="text-xs sm:text-sm font-bold text-foreground">
+                        {lang === "ru" ? t.ru : t.en}
+                      </span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
+                      {lang === "ru" ? t.descRu : t.descEn}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Work types */}
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-3">
+                {lang === "ru" ? "Или выберите тип работы вручную" : "Or pick a work type manually"}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+
             {WORK_TYPES.map((wt) => {
               const sel = wtId === wt.id;
               const det = WORK_TYPE_DETAILS[wt.id]?.[lang];
@@ -818,8 +1239,11 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
+
 
         {/* STEP 1 — volume criteria */}
         {step === 1 && wtCrit && (
@@ -962,6 +1386,67 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                 })}
               </div>
             </div>
+
+            {/* Team mix */}
+            <div className="rounded-xl border border-border/60 bg-surface-hi p-3 sm:p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs sm:text-sm font-semibold text-foreground">{NEW_I18N[lang].teamMix}</div>
+                  <div className="text-[11px] text-muted-foreground">{NEW_I18N[lang].teamMixHelp}</div>
+                </div>
+                <Switch checked={teamEnabled} onCheckedChange={setTeamEnabled} />
+              </div>
+              {teamEnabled && (
+                <>
+                  <div className="space-y-2">
+                    {RESOURCE_ROLES.map((role) => (
+                      <div key={role.id} className="grid grid-cols-[1.4fr_auto_1fr] gap-2 items-center">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-primary-glow">{role.icon}</span>
+                          <span className="text-xs sm:text-sm font-medium text-foreground truncate">
+                            {lang === "ru" ? role.ru : role.en}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          value={teamRates[role.id]}
+                          onChange={(e) =>
+                            setTeamRates((prev) => ({ ...prev, [role.id]: Math.max(0, parseInt(e.target.value) || 0) }))
+                          }
+                          className="w-16 px-2 py-1 rounded-md bg-surface border border-border text-xs text-foreground tabular-nums text-right"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Slider
+                            value={[teamShares[role.id]]}
+                            min={0} max={100} step={5}
+                            onValueChange={(v) =>
+                              setTeamShares((prev) => ({ ...prev, [role.id]: v[0] }))
+                            }
+                          />
+                          <span className="text-[10px] tabular-nums text-muted-foreground w-8 text-right">
+                            {teamShares[role.id]}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+                    <span className="text-muted-foreground">
+                      {NEW_I18N[lang].teamBlended}:{" "}
+                      <span className="text-foreground font-bold tabular-nums">{Math.round(blendedRate)} €/{lang === "ru" ? "ч" : "h"}</span>
+                    </span>
+                    <span className={cn("tabular-nums", teamSharesSum === 100 ? "text-success" : "text-warning")}>
+                      Σ {teamSharesSum}%
+                    </span>
+                  </div>
+                  {teamSharesSum !== 100 && (
+                    <div className="text-[10px] text-warning">{NEW_I18N[lang].teamSumWarn}</div>
+                  )}
+                </>
+              )}
+            </div>
+
+
             <ModRow label={tr.riskBuf}>
               {tr.riskLevels.map((r) => (
                 <Chip key={r.id} selected={riskBuf === r.id} onClick={() => setRiskBuf(r.id)}>
