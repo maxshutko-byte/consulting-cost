@@ -1125,8 +1125,11 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
+
 
         {/* STEP 1 — volume criteria */}
         {step === 1 && wtCrit && (
