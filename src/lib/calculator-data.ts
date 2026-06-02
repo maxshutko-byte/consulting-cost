@@ -664,3 +664,116 @@ export const DETAILS_I18N = {
     notes: "Note",
   },
 } as const;
+
+/* ============ RESOURCE ROLES (team mix) ============ */
+export type Role = {
+  id: string;
+  ru: string;
+  en: string;
+  /** default hourly rate, €/h */
+  rate: number;
+  /** default share of project hours, % (sums ≈ 100) */
+  defaultShare: number;
+  icon: string;
+};
+
+export const RESOURCE_ROLES: Role[] = [
+  { id: "analyst", ru: "Бизнес-аналитик",   en: "Business analyst",  rate: 55, defaultShare: 40, icon: "◈" },
+  { id: "senior",  ru: "Senior эксперт",    en: "Senior expert",     rate: 95, defaultShare: 20, icon: "◆" },
+  { id: "pm",      ru: "Project Manager",   en: "Project Manager",   rate: 65, defaultShare: 15, icon: "◎" },
+  { id: "writer",  ru: "Тех. писатель",     en: "Tech writer",       rate: 45, defaultShare: 15, icon: "⊟" },
+  { id: "junior",  ru: "Junior / стажёр",   en: "Junior / intern",   rate: 30, defaultShare: 10, icon: "◯" },
+];
+
+/* ============ PROJECT TEMPLATES (presets) ============ */
+export type ProjectTemplate = {
+  id: string;
+  ru: string; en: string;
+  descRu: string; descEn: string;
+  icon: string;
+  wtId: string;
+  volumeAns: Record<string, string>;
+  complexAns: Record<string, string>;
+  univAns: Record<string, string>;
+  urgency: string;
+  format: string;
+  pricingModel?: PricingModelId;
+  riskBuf?: string;
+  overhead?: string;
+};
+
+export const PROJECT_TEMPLATES: ProjectTemplate[] = [
+  {
+    id: "startup_idea",
+    ru: "Стартап: оценка бизнес-идеи", en: "Startup: idea check",
+    descRu: "Концепция + TAM/SAM + unit-эк.", descEn: "Concept + TAM/SAM + unit econ",
+    icon: "◇",
+    wtId: "idea",
+    volumeAns: { concepts: "1", tam: "yes", unit_econ: "yes" },
+    complexAns: { innovation: "new", custdev: "no", regulatory: "none" },
+    univAns: { client_type: "startup", data_clarity: "messy", lpr_count: "1", task_clarity: "partial", lang_out: "one", revisions: "2" },
+    urgency: "fast", format: "document",
+    pricingModel: "fixed", riskBuf: "20", overhead: "15",
+  },
+  {
+    id: "smb_processes",
+    ru: "МСБ: описание процессов AS-IS/TO-BE", en: "SMB: AS-IS/TO-BE mapping",
+    descRu: "4–8 процессов, BPMN, интервью", descEn: "4–8 processes, BPMN, interviews",
+    icon: "◈",
+    wtId: "analysis",
+    volumeAns: { proc_count: "4-8", viz: "yes", interviews: "few" },
+    complexAns: { nesting: "med", automation_level: "partial", systems: "2-3" },
+    univAns: { client_type: "smb", data_clarity: "clear", lpr_count: "2-3", task_clarity: "clear", lang_out: "one", revisions: "2" },
+    urgency: "normal", format: "document",
+    pricingModel: "fixed", riskBuf: "10", overhead: "15",
+  },
+  {
+    id: "corp_regulations",
+    ru: "Корпорация: регламенты", en: "Enterprise: regulations",
+    descRu: "3–6 документов, 30+ стр., NDA", descEn: "3–6 docs, 30+ pages, NDA",
+    icon: "◉",
+    wtId: "docs",
+    volumeAns: { doc_count: "3-6", volume_pages: "long", approvals: "4+" },
+    complexAns: { standard: "no", legal: "yes", sensitivity: "secret" },
+    univAns: { client_type: "corp", data_clarity: "clear", lpr_count: "4+", task_clarity: "clear", lang_out: "one", revisions: "3+" },
+    urgency: "normal", format: "document",
+    pricingModel: "tm", riskBuf: "20", overhead: "20",
+  },
+  {
+    id: "automation_spec",
+    ru: "Автоматизация: ТЗ + интеграции", en: "Automation: spec + integrations",
+    descRu: "3–5 систем, ролевая модель, приёмка", descEn: "3–5 systems, roles, acceptance",
+    icon: "⬡",
+    wtId: "automation",
+    volumeAns: { integrations: "3-5", prototype: "no", acceptance: "yes" },
+    complexAns: { legacy: "yes", custom: "partial", roles: "med" },
+    univAns: { client_type: "corp", data_clarity: "messy", lpr_count: "2-3", task_clarity: "partial", lang_out: "one", revisions: "2" },
+    urgency: "normal", format: "document",
+    pricingModel: "tm", riskBuf: "30", overhead: "15",
+  },
+  {
+    id: "market_research",
+    ru: "Исследование рынка", en: "Market research",
+    descRu: "Страна, 4–8 конкурентов, отчёт", descEn: "National, 4–8 competitors, report",
+    icon: "◭",
+    wtId: "market",
+    volumeAns: { geo: "national", competitors: "4-8", viz_market: "yes" },
+    complexAns: { data_sources: "paid", market_maturity: "forming", segments: "3-4" },
+    univAns: { client_type: "smb", data_clarity: "clear", lpr_count: "1", task_clarity: "clear", lang_out: "bilingual", revisions: "2" },
+    urgency: "normal", format: "document",
+    pricingModel: "fixed", riskBuf: "10", overhead: "15",
+  },
+  {
+    id: "retainer_consulting",
+    ru: "Консалтинг по подписке", en: "Retainer consulting",
+    descRu: "Регулярные сессии, отчёты, поддержка", descEn: "Regular sessions, reports, support",
+    icon: "↻",
+    wtId: "consulting",
+    volumeAns: { participants: "3-6", prep_materials: "yes", report: "short" },
+    complexAns: { audience: "mgmt", conflict: "low", decision: "yes" },
+    univAns: { client_type: "smb", data_clarity: "clear", lpr_count: "2-3", task_clarity: "clear", lang_out: "one", revisions: "1" },
+    urgency: "normal", format: "online",
+    pricingModel: "retainer", riskBuf: "10", overhead: "15",
+  },
+];
+
