@@ -1015,7 +1015,42 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
 
         {/* STEP 0 — work type */}
         {step === 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="space-y-5">
+            {/* Templates */}
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
+                {NEW_I18N[lang].templates}
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-3">{NEW_I18N[lang].templatesHelp}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PROJECT_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base text-primary-glow">{t.icon}</span>
+                      <span className="text-xs sm:text-sm font-bold text-foreground">
+                        {lang === "ru" ? t.ru : t.en}
+                      </span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
+                      {lang === "ru" ? t.descRu : t.descEn}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Work types */}
+            <div>
+              <div className="text-xs sm:text-sm font-semibold text-foreground mb-3">
+                {lang === "ru" ? "Или выберите тип работы вручную" : "Or pick a work type manually"}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+
             {WORK_TYPES.map((wt) => {
               const sel = wtId === wt.id;
               const det = WORK_TYPE_DETAILS[wt.id]?.[lang];
@@ -1234,6 +1269,67 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                 })}
               </div>
             </div>
+
+            {/* Team mix */}
+            <div className="rounded-xl border border-border/60 bg-surface-hi p-3 sm:p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs sm:text-sm font-semibold text-foreground">{NEW_I18N[lang].teamMix}</div>
+                  <div className="text-[11px] text-muted-foreground">{NEW_I18N[lang].teamMixHelp}</div>
+                </div>
+                <Switch checked={teamEnabled} onCheckedChange={setTeamEnabled} />
+              </div>
+              {teamEnabled && (
+                <>
+                  <div className="space-y-2">
+                    {RESOURCE_ROLES.map((role) => (
+                      <div key={role.id} className="grid grid-cols-[1.4fr_auto_1fr] gap-2 items-center">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-primary-glow">{role.icon}</span>
+                          <span className="text-xs sm:text-sm font-medium text-foreground truncate">
+                            {lang === "ru" ? role.ru : role.en}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          value={teamRates[role.id]}
+                          onChange={(e) =>
+                            setTeamRates((prev) => ({ ...prev, [role.id]: Math.max(0, parseInt(e.target.value) || 0) }))
+                          }
+                          className="w-16 px-2 py-1 rounded-md bg-surface border border-border text-xs text-foreground tabular-nums text-right"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Slider
+                            value={[teamShares[role.id]]}
+                            min={0} max={100} step={5}
+                            onValueChange={(v) =>
+                              setTeamShares((prev) => ({ ...prev, [role.id]: v[0] }))
+                            }
+                          />
+                          <span className="text-[10px] tabular-nums text-muted-foreground w-8 text-right">
+                            {teamShares[role.id]}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+                    <span className="text-muted-foreground">
+                      {NEW_I18N[lang].teamBlended}:{" "}
+                      <span className="text-foreground font-bold tabular-nums">{Math.round(blendedRate)} €/{lang === "ru" ? "ч" : "h"}</span>
+                    </span>
+                    <span className={cn("tabular-nums", teamSharesSum === 100 ? "text-success" : "text-warning")}>
+                      Σ {teamSharesSum}%
+                    </span>
+                  </div>
+                  {teamSharesSum !== 100 && (
+                    <div className="text-[10px] text-warning">{NEW_I18N[lang].teamSumWarn}</div>
+                  )}
+                </>
+              )}
+            </div>
+
+
             <ModRow label={tr.riskBuf}>
               {tr.riskLevels.map((r) => (
                 <Chip key={r.id} selected={riskBuf === r.id} onClick={() => setRiskBuf(r.id)}>
