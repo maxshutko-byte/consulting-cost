@@ -1079,9 +1079,10 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
           </Tabs>
 
           <div className="px-5 sm:px-8 pb-6 space-y-2">
-            <Button onClick={exportPdf} className="w-full mt-2 shadow-glow">
-              ⬇ {tr.exportPdf}
+            <Button onClick={exportPdf} disabled={pdfBusy} className="w-full mt-2 shadow-glow">
+              {pdfBusy ? NEW_I18N[lang].proposalLoadingFont : `⬇ ${tr.exportPdf}`}
             </Button>
+
             <Button onClick={reset} variant="outline" className="w-full">
               {tr.recalculate}
             </Button>
