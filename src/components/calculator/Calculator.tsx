@@ -591,11 +591,14 @@ export default function Calculator() {
               {[
                 { id: "summary", label: lang === "ru" ? "Итог" : "Summary" },
                 { id: "phases", label: lang === "ru" ? "Фазы" : "Phases" },
+                { id: "waterfall", label: NEW_I18N[lang].waterfall },
                 { id: "scenarios", label: lang === "ru" ? "Сценарии" : "Scenarios" },
+                { id: "budget", label: NEW_I18N[lang].budget },
                 { id: "history", label: lang === "ru" ? "История" : "History" },
                 { id: "card", label: lang === "ru" ? "КП" : "Proposal" },
                 { id: "ai", label: lang === "ru" ? "Анализ" : "Analysis" },
               ].map((t) => (
+
                 <TabsTrigger
                   key={t.id}
                   value={t.id}
@@ -698,7 +701,73 @@ export default function Calculator() {
               </div>
             </TabsContent>
 
-            {/* HISTORY */}
+            {/* WATERFALL — price composition */}
+            <TabsContent value="waterfall" className="p-5 sm:p-8 mt-0">
+              <SectionTitle>{NEW_I18N[lang].waterfall}</SectionTitle>
+              <div className="text-xs text-muted-foreground mb-4">{NEW_I18N[lang].waterfallHelp}</div>
+              {(() => {
+                const cur = tr.currencies.find((c) => c.id === currency)!;
+                const exch = cur.rate;
+                const baseRateMid = (R.rMin + R.rMax) / 2;
+                const base = Math.round(R.baseH * baseRateMid * exch);
+                const finalMid = Math.round((R.cMin + R.cMax) / 2);
+                const fmt = FORMAT_DATA.find((f) => f.id === format)!;
+                let scopeM = 1;
+                [...wtCrit!.volume, ...wtCrit!.complexity, ...UNIVERSAL].forEach((c: Criterion) => {
+                  const ans = volumeAns[c.id] || complexAns[c.id] || univAns[c.id];
+                  const opt = c.options.find((o) => o.id === ans);
+                  if (opt) scopeM *= opt.mult;
+                });
+                const indM = industryExp === "known" ? 1.0 : industryExp === "partial" ? 1.15 : 1.3;
+                const clientM = clientNew === "returning" ? 0.9 : 1.0;
+                const steps = [
+                  { label: lang === "ru" ? "Базовая трудоёмкость × ставка" : "Base hours × rate", val: base, delta: base, tone: "primary" },
+                  { label: lang === "ru" ? `Объём + сложность (×${scopeM.toFixed(2)})` : `Scope + complexity (×${scopeM.toFixed(2)})`, val: Math.round(base * scopeM), delta: Math.round(base * scopeM - base), tone: "info" },
+                  { label: lang === "ru" ? `Срочность (×${R.urgEntry.mult})` : `Urgency (×${R.urgEntry.mult})`, val: Math.round(base * scopeM * R.urgEntry.mult), delta: Math.round(base * scopeM * (R.urgEntry.mult - 1)), tone: R.urgEntry.mult > 1 ? "warning" : "info" },
+                  { label: lang === "ru" ? `Формат (×${fmt.mult})` : `Format (×${fmt.mult})`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult), delta: Math.round(base * scopeM * R.urgEntry.mult * (fmt.mult - 1)), tone: fmt.mult >= 1 ? "info" : "success" },
+                  { label: lang === "ru" ? `Клиент × отрасль (×${(clientM * indM).toFixed(2)})` : `Client × industry (×${(clientM * indM).toFixed(2)})`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * (clientM * indM - 1)), tone: "info" },
+                  { label: lang === "ru" ? `Накладные +${overhead}%` : `Overhead +${overhead}%`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100)), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (parseInt(overhead) / 100)), tone: "warning" },
+                  { label: lang === "ru" ? `Риск-буфер +${riskBuf}%` : `Risk buffer +${riskBuf}%`, val: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100)), delta: Math.round(base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (parseInt(riskBuf) / 100)), tone: "warning" },
+                  { label: lang === "ru" ? `Модель: ${R.pm.ru} (×${R.pm.mult})` : `Model: ${R.pm.en} (×${R.pm.mult})`, val: finalMid, delta: Math.round(finalMid - base * scopeM * R.urgEntry.mult * fmt.mult * clientM * indM * (1 + parseInt(overhead) / 100) * (1 + parseInt(riskBuf) / 100)), tone: R.pm.mult >= 1 ? "warning" : "success" },
+                ];
+                const maxVal = Math.max(...steps.map((s) => s.val));
+                return (
+                  <div className="space-y-2">
+                    {steps.map((s, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_auto] gap-3 items-center">
+                        <div>
+                          <div className="text-xs text-foreground mb-1">{s.label}</div>
+                          <div className="h-2 bg-surface-hi rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                s.tone === "primary" && "bg-primary",
+                                s.tone === "info" && "bg-info",
+                                s.tone === "warning" && "bg-warning",
+                                s.tone === "success" && "bg-success",
+                              )}
+                              style={{ width: `${(s.val / maxVal) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-right tabular-nums text-xs">
+                          <div className="font-bold text-foreground">{s.val.toLocaleString()} {R.sym}</div>
+                          {i > 0 && (
+                            <div className={cn(
+                              "text-[10px]",
+                              s.delta > 0 ? "text-warning" : s.delta < 0 ? "text-success" : "text-muted-foreground",
+                            )}>
+                              {s.delta > 0 ? "+" : ""}{s.delta.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </TabsContent>
+
             <TabsContent value="history" className="p-5 sm:p-8 mt-0">
               <div className="flex items-center justify-between mb-4">
                 <SectionTitle className="mb-0">{tr.history}</SectionTitle>
