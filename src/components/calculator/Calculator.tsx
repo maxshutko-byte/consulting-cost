@@ -1537,12 +1537,22 @@ function ResultHeader({
   return (
     <>
       <div className="flex justify-between items-center mb-5 sm:mb-7">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary-glow shadow-glow" />
-          <span className="text-[10px] sm:text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">
+        <a
+          href="/"
+          className="flex items-center gap-2.5 group"
+          aria-label="NOISEGROUP"
+        >
+          <img
+            src={logoAsset.url}
+            alt="NOISEGROUP"
+            className="h-5 sm:h-6 w-auto select-none opacity-90 group-hover:opacity-100 transition-opacity"
+            draggable={false}
+          />
+          <span className="hidden sm:inline-block h-4 w-px bg-border" aria-hidden />
+          <span className="hidden sm:inline text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">
             {tr.badge}
           </span>
-        </div>
+        </a>
         <div className="flex gap-[2px] bg-surface border border-border rounded-lg p-[3px]">
           {(["ru", "en"] as Lang[]).map((l) => (
             <button
@@ -1564,6 +1574,7 @@ function ResultHeader({
         </h1>
         <p className="text-xs sm:text-sm text-muted-foreground">{tr.subtitle}</p>
       </header>
+
     </>
   );
 }
