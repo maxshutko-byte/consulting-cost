@@ -1131,33 +1131,43 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
         {/* STEP 0 — work type */}
         {step === 0 && (
           <div className="space-y-5">
-            {/* Templates */}
-            <div>
-              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
-                {NEW_I18N[lang].templates}
+            {/* Templates (collapsible) */}
+            <details className="group rounded-xl border border-border/50 bg-surface-hi/40 open:bg-surface-hi/60 transition-colors">
+              <summary className="list-none cursor-pointer select-none flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 sm:py-3 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-semibold text-foreground">
+                    {NEW_I18N[lang].templates}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {NEW_I18N[lang].templatesHelp}
+                  </div>
+                </div>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-3 pb-3 sm:px-4 sm:pb-4 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {PROJECT_TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base text-primary-glow">{t.icon}</span>
+                        <span className="text-xs sm:text-sm font-bold text-foreground">
+                          {lang === "ru" ? t.ru : t.en}
+                        </span>
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
+                        {lang === "ru" ? t.descRu : t.descEn}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="text-[11px] text-muted-foreground mb-3">{NEW_I18N[lang].templatesHelp}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {PROJECT_TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => applyTemplate(t)}
-                    className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base text-primary-glow">{t.icon}</span>
-                      <span className="text-xs sm:text-sm font-bold text-foreground">
-                        {lang === "ru" ? t.ru : t.en}
-                      </span>
-                    </div>
-                    <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
-                      {lang === "ru" ? t.descRu : t.descEn}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            </details>
+
 
             {/* Work types */}
             <div>
