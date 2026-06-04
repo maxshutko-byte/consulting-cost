@@ -22,7 +22,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Info } from "lucide-react";
+import { Info, ChevronDown } from "lucide-react";
+import logoAsset from "@/assets/noisegroup.png.asset.json";
 import { cn } from "@/lib/utils";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeEstimate } from "@/lib/ai-analysis.functions";
@@ -1130,33 +1131,43 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
         {/* STEP 0 — work type */}
         {step === 0 && (
           <div className="space-y-5">
-            {/* Templates */}
-            <div>
-              <div className="text-xs sm:text-sm font-semibold text-foreground mb-1">
-                {NEW_I18N[lang].templates}
+            {/* Templates (collapsible) */}
+            <details className="group rounded-xl border border-border/50 bg-surface-hi/40 open:bg-surface-hi/60 transition-colors">
+              <summary className="list-none cursor-pointer select-none flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 sm:py-3 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-semibold text-foreground">
+                    {NEW_I18N[lang].templates}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {NEW_I18N[lang].templatesHelp}
+                  </div>
+                </div>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-3 pb-3 sm:px-4 sm:pb-4 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {PROJECT_TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base text-primary-glow">{t.icon}</span>
+                        <span className="text-xs sm:text-sm font-bold text-foreground">
+                          {lang === "ru" ? t.ru : t.en}
+                        </span>
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
+                        {lang === "ru" ? t.descRu : t.descEn}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="text-[11px] text-muted-foreground mb-3">{NEW_I18N[lang].templatesHelp}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {PROJECT_TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => applyTemplate(t)}
-                    className="text-left p-3 rounded-xl border bg-surface-hi border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base text-primary-glow">{t.icon}</span>
-                      <span className="text-xs sm:text-sm font-bold text-foreground">
-                        {lang === "ru" ? t.ru : t.en}
-                      </span>
-                    </div>
-                    <div className="text-[10px] sm:text-xs text-muted-foreground leading-snug">
-                      {lang === "ru" ? t.descRu : t.descEn}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            </details>
+
 
             {/* Work types */}
             <div>
@@ -1526,12 +1537,22 @@ function ResultHeader({
   return (
     <>
       <div className="flex justify-between items-center mb-5 sm:mb-7">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary-glow shadow-glow" />
-          <span className="text-[10px] sm:text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">
+        <a
+          href="/"
+          className="flex items-center gap-2.5 group"
+          aria-label="NOISEGROUP"
+        >
+          <img
+            src={logoAsset.url}
+            alt="NOISEGROUP"
+            className="h-5 sm:h-6 w-auto select-none opacity-90 group-hover:opacity-100 transition-opacity"
+            draggable={false}
+          />
+          <span className="hidden sm:inline-block h-4 w-px bg-border" aria-hidden />
+          <span className="hidden sm:inline text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">
             {tr.badge}
           </span>
-        </div>
+        </a>
         <div className="flex gap-[2px] bg-surface border border-border rounded-lg p-[3px]">
           {(["ru", "en"] as Lang[]).map((l) => (
             <button
@@ -1553,6 +1574,7 @@ function ResultHeader({
         </h1>
         <p className="text-xs sm:text-sm text-muted-foreground">{tr.subtitle}</p>
       </header>
+
     </>
   );
 }
