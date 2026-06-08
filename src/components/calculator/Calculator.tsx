@@ -1318,9 +1318,6 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                       <div className="font-bold text-foreground text-sm sm:text-base">
                         {lang === "ru" ? u.ru : u.en}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {lang === "ru" ? u.descRu : u.descEn}
-                      </div>
                     </div>
                   </div>
                   <span className="text-xs font-semibold text-muted-foreground tabular-nums">×{u.mult}</span>
