@@ -1084,6 +1084,72 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
               {pdfBusy ? NEW_I18N[lang].proposalLoadingFont : `⬇ ${tr.exportPdf}`}
             </Button>
 
+            <Button
+              onClick={() => {
+                const isRu = lang === "ru";
+                const subject = isRu
+                  ? `Запрос на выполнение работ — ${R.wt.ru}`
+                  : `Work request — ${R.wt.en}`;
+                const lines = isRu
+                  ? [
+                      "Здравствуйте, NoiseGroup!",
+                      "",
+                      "Прошу рассмотреть запрос на выполнение работ со следующими параметрами:",
+                      "",
+                      `• Тип работы: ${R.wt.ru}`,
+                      `• Модель ценообразования: ${R.pm.ru}${R.pm.mult !== 1 ? ` (×${R.pm.mult})` : ""}`,
+                      `• Срочность: ${R.urgEntry.ru} (×${R.urgEntry.mult})`,
+                      `• Формат работ: ${R.fmtEntry.ru}`,
+                      `• Тип клиента: ${clientNew === "new" ? "новый" : "повторный"}`,
+                      `• Отрасль: ${industryExp === "known" ? "знакомая" : industryExp === "partial" ? "частично знакомая" : "новая"}`,
+                      `• Риск-буфер: +${riskBuf}%`,
+                      `• Накладные расходы: +${overhead}%`,
+                      "",
+                      "ОЦЕНКА",
+                      `• Трудоёмкость: ${R.hMin}–${R.hMax} часов`,
+                      `• Ставка: ${R.rMin}–${R.rMax} €/час`,
+                      `• Итоговая стоимость: ${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}${pricingModel === "retainer" ? " /мес" : ""}`,
+                      "",
+                      `Дата запроса: ${new Date().toLocaleDateString("ru-RU")}`,
+                      "",
+                      "Прошу связаться со мной для уточнения деталей и подготовки коммерческого предложения.",
+                      "",
+                      "С уважением,",
+                    ]
+                  : [
+                      "Hello NoiseGroup,",
+                      "",
+                      "I would like to request work with the following parameters:",
+                      "",
+                      `• Work type: ${R.wt.en}`,
+                      `• Pricing model: ${R.pm.en}${R.pm.mult !== 1 ? ` (×${R.pm.mult})` : ""}`,
+                      `• Urgency: ${R.urgEntry.en} (×${R.urgEntry.mult})`,
+                      `• Format: ${R.fmtEntry.en}`,
+                      `• Client type: ${clientNew === "new" ? "new" : "returning"}`,
+                      `• Industry: ${industryExp === "known" ? "known" : industryExp === "partial" ? "partial" : "new"}`,
+                      `• Risk buffer: +${riskBuf}%`,
+                      `• Overhead: +${overhead}%`,
+                      "",
+                      "ESTIMATE",
+                      `• Effort: ${R.hMin}–${R.hMax} hours`,
+                      `• Rate: ${R.rMin}–${R.rMax} €/hr`,
+                      `• Total cost: ${R.cMin.toLocaleString()} – ${R.cMax.toLocaleString()} ${R.sym}${pricingModel === "retainer" ? " /mo" : ""}`,
+                      "",
+                      `Request date: ${new Date().toLocaleDateString("en-GB")}`,
+                      "",
+                      "Please contact me to discuss details and prepare a commercial proposal.",
+                      "",
+                      "Best regards,",
+                    ];
+                const body = lines.join("\n");
+                window.location.href = `mailto:max@noise.kz?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+              }}
+              variant="secondary"
+              className="w-full"
+            >
+              ✉ {lang === "ru" ? "Отправить запрос в NoiseGroup" : "Send request to NoiseGroup"}
+            </Button>
+
             <Button onClick={reset} variant="outline" className="w-full">
               {tr.recalculate}
             </Button>
@@ -1317,9 +1383,6 @@ Date: ${new Date().toLocaleDateString("en-GB")}`}
                     <div className="min-w-0">
                       <div className="font-bold text-foreground text-sm sm:text-base">
                         {lang === "ru" ? u.ru : u.en}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {lang === "ru" ? u.descRu : u.descEn}
                       </div>
                     </div>
                   </div>
