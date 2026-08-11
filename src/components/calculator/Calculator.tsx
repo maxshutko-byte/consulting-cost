@@ -670,6 +670,13 @@ export default function Calculator() {
         }
 
         doc.save(`proposal-${docNo.replace(/[^\w-]/g, "")}.pdf`);
+      } catch (e) {
+        console.error("PDF export failed", e);
+        alert(
+          lang === "ru"
+            ? "Не удалось сформировать PDF. Попробуйте ещё раз."
+            : "Failed to generate PDF. Please try again.",
+        );
       } finally {
         setPdfBusy(false);
       }
