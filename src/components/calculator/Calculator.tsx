@@ -446,26 +446,53 @@ export default function Calculator() {
     // Auto-fetch handled by Tabs onValueChange below
 
     // Cached Cyrillic font (PT Sans) for jsPDF
+    const FONT_URLS = {
+      normal: "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/ptsans/PT_Sans-Web-Regular.ttf",
+      bold: "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/ptsans/PT_Sans-Web-Bold.ttf",
+    } as const;
+
+    const fetchFontB64 = async (url: string): Promise<string> => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Font HTTP ${res.status}`);
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      // sanity check: real TTF/OTF is large and starts with a known signature
+      if (bytes.byteLength < 20000) throw new Error("Font too small — likely an error page");
+      const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+      const okSig = sig === "\x00\x01\x00\x00" || sig === "true" || sig === "OTTO" || sig === "ttcf";
+      if (!okSig) throw new Error("Not a TTF file");
+      let bin = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      return btoa(bin);
+    };
+
     const ensureCyrFont = async (doc: jsPDF): Promise<string> => {
       const FONT_NAME = "PTSans";
-      const w = window as unknown as { __ptsans_b64?: string };
+      const w = window as unknown as { __ptsans?: { normal: string; bold: string } };
       try {
-        if (!w.__ptsans_b64) {
-          const res = await fetch(
-            "https://fonts.gstatic.com/s/ptsans/v17/jizaRExUiTo99u79D0KExQ.ttf",
-          );
-          const buf = await res.arrayBuffer();
-          let bin = "";
-          const bytes = new Uint8Array(buf);
-          for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
-          w.__ptsans_b64 = btoa(bin);
+        if (!w.__ptsans) {
+          const [normal, bold] = await Promise.all([
+            fetchFontB64(FONT_URLS.normal),
+            fetchFontB64(FONT_URLS.bold),
+          ]);
+          w.__ptsans = { normal, bold };
         }
-        doc.addFileToVFS(`${FONT_NAME}.ttf`, w.__ptsans_b64);
-        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "normal");
-        doc.addFont(`${FONT_NAME}.ttf`, FONT_NAME, "bold");
+        doc.addFileToVFS(`${FONT_NAME}-Regular.ttf`, w.__ptsans.normal);
+        doc.addFont(`${FONT_NAME}-Regular.ttf`, FONT_NAME, "normal");
+        doc.addFileToVFS(`${FONT_NAME}-Bold.ttf`, w.__ptsans.bold);
+        doc.addFont(`${FONT_NAME}-Bold.ttf`, FONT_NAME, "bold");
+        // verify the font is actually usable before returning it
+        doc.setFont(FONT_NAME, "normal");
+        doc.getTextWidth("Тест");
+        doc.setFont(FONT_NAME, "bold");
+        doc.getTextWidth("Тест");
         return FONT_NAME;
       } catch (e) {
         console.warn("Failed to load Cyrillic font, falling back to helvetica", e);
+        doc.setFont("helvetica", "normal");
         return "helvetica";
       }
     };
@@ -476,6 +503,7 @@ export default function Calculator() {
         const doc = new jsPDF({ unit: "pt", format: "a4" });
         const isRu = lang === "ru";
         const FONT = isRu ? await ensureCyrFont(doc) : "helvetica";
+
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const margin = 48;
